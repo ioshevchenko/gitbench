@@ -75,7 +75,7 @@ tasks.named('jar') {
 tasks.named('shadowJar') {
     archiveFileName = "gitbench_${project.version}.${qualifier}.jar"
     from(projectDir) {
-        include 'plugin.xml', 'NOTICE'
+        include 'plugin.xml', 'NOTICE', 'LICENSE', 'third_party/LICENSE-APACHE-2.0.txt'
     }
     manifest {
         from('META-INF/MANIFEST.MF') {

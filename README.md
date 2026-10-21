@@ -71,4 +71,6 @@ The tests run real git in temporary repositories. They also include the original
 
 ## License
 
-The icons, the commit graph and the text comparison come from [IntelliJ Community](https://github.com/JetBrains/intellij-community) under the Apache License 2.0. See `NOTICE`.
+Gitbench is under the [MIT License](LICENSE).
+
+The icons, the commit graph and the text comparison come from [IntelliJ Community](https://github.com/JetBrains/intellij-community) and keep the [Apache License 2.0](third_party/LICENSE-APACHE-2.0.txt). `NOTICE` lists these parts. The plugin jar contains both licenses and `NOTICE`.
