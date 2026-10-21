@@ -21,17 +21,30 @@ public final class ViewerGeometry implements LineGeometry {
     return text().getLineHeight();
   }
 
+  /** A folded line has the top of its fold line, the visible line above it, so a block in a fold shows on the fold line. */
   @Override
   public int top(int modelLine) {
     int lines = viewer.getDocument().getNumberOfLines();
-    for (int line = modelLine; line < lines; line++) {
+    if (modelLine >= lines) {
+      return text().getLinePixel(text().getLineCount() - 1) + text().getLineHeight();
+    }
+    for (int line = modelLine; line >= 0; line--) {
       int widgetLine = JFaceTextUtil.modelLineToWidgetLine(viewer, line);
       if (widgetLine >= 0) {
         return text().getLinePixel(widgetLine);
       }
     }
-    // Below the last line, or below a folded region at the end: the bottom of the text.
-    return text().getLinePixel(text().getLineCount() - 1) + text().getLineHeight();
+    return 0;
+  }
+
+  @Override
+  public int firstVisibleLine() {
+    return Math.max(0, JFaceTextUtil.getPartialTopIndex(viewer));
+  }
+
+  @Override
+  public int lastVisibleLine() {
+    return JFaceTextUtil.getPartialBottomIndex(viewer);
   }
 
   @Override

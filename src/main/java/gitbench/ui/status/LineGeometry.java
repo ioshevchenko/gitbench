@@ -9,4 +9,14 @@ public interface LineGeometry {
 
   /** False for a line inside a folded region. */
   boolean visible(int modelLine);
+
+  /** The first document line that shows, even in part; the painters skip the lines above it. */
+  default int firstVisibleLine() {
+    return 0;
+  }
+
+  /** The last document line that shows, even in part. */
+  default int lastVisibleLine() {
+    return Integer.MAX_VALUE;
+  }
 }

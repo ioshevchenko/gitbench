@@ -51,13 +51,17 @@ class AnnotatePainterTest extends SwtTest {
   }
 
   private ImageData paint(AnnotatePainter painter, Map<String, Integer> colors) {
+    return paint(painter, colors, GEOMETRY);
+  }
+
+  private ImageData paint(AnnotatePainter painter, Map<String, Integer> colors, LineGeometry geometry) {
     Image image = new Image(display, WIDTH, 64);
     GC gc = new GC(image);
     try {
       gc.setBackground(display.getSystemColor(SWT.COLOR_WHITE));
       gc.fillRectangle(0, 0, WIDTH, 64);
       gc.setFont(display.getSystemFont());
-      painter.paint(gc, blame(), colors, GEOMETRY, false, CLOCK, WIDTH);
+      painter.paint(gc, blame(), colors, geometry, false, CLOCK, WIDTH);
       return image.getImageData();
     }
     finally {
@@ -119,5 +123,65 @@ class AnnotatePainterTest extends SwtTest {
     ImageData data = paint(new AnnotatePainter(display.getSystemFont()), Map.of());
 
     assertThat(darkest(data, 1)).isLessThan(darkest(data, 0));
+  }
+
+  @Test
+  void paintsOnlyTheVisibleLines() {
+    LineGeometry onlyLineOne = new LineGeometry() {
+      @Override
+      public int lineHeight() {
+        return 16;
+      }
+
+      @Override
+      public int top(int modelLine) {
+        return modelLine * 16;
+      }
+
+      @Override
+      public boolean visible(int modelLine) {
+        return true;
+      }
+
+      @Override
+      public int firstVisibleLine() {
+        return 1;
+      }
+
+      @Override
+      public int lastVisibleLine() {
+        return 1;
+      }
+    };
+
+    ImageData data = paint(new AnnotatePainter(display.getSystemFont()), Map.of(OLD, 0xC9DAFB, NEW, 0xA1BEF7), onlyLineOne);
+
+    assertThat(pixel(data, WIDTH - 2, 8)).isEqualTo(new RGB(255, 255, 255));
+    assertThat(pixel(data, WIDTH - 2, 16 + 8)).isEqualTo(new RGB(0xA1, 0xBE, 0xF7));
+  }
+
+  @Test
+  void backgroundCoversATallLine() {
+    // Line 0 is 32 pixels high, as with code minings above it.
+    LineGeometry tall = new LineGeometry() {
+      @Override
+      public int lineHeight() {
+        return 16;
+      }
+
+      @Override
+      public int top(int modelLine) {
+        return modelLine == 0 ? 0 : 16 + modelLine * 16;
+      }
+
+      @Override
+      public boolean visible(int modelLine) {
+        return true;
+      }
+    };
+
+    ImageData data = paint(new AnnotatePainter(display.getSystemFont()), Map.of(OLD, 0xC9DAFB, NEW, 0xA1BEF7), tall);
+
+    assertThat(pixel(data, WIDTH - 2, 24)).isEqualTo(new RGB(0xC9, 0xDA, 0xFB));
   }
 }

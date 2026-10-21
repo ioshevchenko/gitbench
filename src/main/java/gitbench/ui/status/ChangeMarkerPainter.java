@@ -27,7 +27,7 @@ public final class ChangeMarkerPainter {
     int endX = MARKER_X + MARKER_WIDTH;
     for (int i = 0; i < ranges.size(); i++) {
       DiffChange range = ranges.get(i);
-      if (!geometry.visible(range.startLine2())) {
+      if (!shows(range, geometry)) {
         continue;
       }
       int x = i == hovered ? MARKER_X - HOVER_EXTRA : MARKER_X;
@@ -40,10 +40,28 @@ public final class ChangeMarkerPainter {
         gc.fillRoundRectangle(x, y - DELETION_HALF + 1, width, 2 * DELETION_HALF - 2, width, width);
       }
       else {
-        int endY = geometry.top(range.endLine2());
-        gc.fillRoundRectangle(x, y + 1, width, endY - y - 2, width, width);
+        gc.fillRoundRectangle(x, y + 1, width, bottom(range, geometry) - y - 2, width, width);
       }
     }
+  }
+
+  /**
+   * Whether the range shows: it is near the visible lines, and a deletion is not inside a fold. A block of lines that
+   * starts or ends inside a fold shows on the fold line, as IntelliJ draws it.
+   */
+  private static boolean shows(DiffChange range, LineGeometry geometry) {
+    // Compared without + 1: the last visible line may be Integer.MAX_VALUE.
+    if (range.endLine2() < geometry.firstVisibleLine() || range.startLine2() - 1 > geometry.lastVisibleLine()) {
+      return false;
+    }
+    return range.kind() != BlockKind.DELETED || geometry.visible(range.startLine2());
+  }
+
+  /** The bottom of a block of lines; a block that is folded away has the height of its fold line. */
+  private static int bottom(DiffChange range, LineGeometry geometry) {
+    int y = geometry.top(range.startLine2());
+    int endY = geometry.top(range.endLine2());
+    return endY > y ? endY : y + geometry.lineHeight();
   }
 
   /**
@@ -54,11 +72,11 @@ public final class ChangeMarkerPainter {
     int gap = geometry.lineHeight() / 3;
     for (int i = 0; i < ranges.size(); i++) {
       DiffChange range = ranges.get(i);
-      if (!geometry.visible(range.startLine2())) {
+      if (!shows(range, geometry)) {
         continue;
       }
       int startY = geometry.top(range.startLine2());
-      int endY = geometry.top(range.endLine2());
+      int endY = range.kind() == BlockKind.DELETED ? startY : bottom(range, geometry);
       if (startY == endY) {
         startY -= gap;
         endY += gap;

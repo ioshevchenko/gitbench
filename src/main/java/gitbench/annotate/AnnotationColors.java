@@ -47,8 +47,9 @@ public final class AnnotationColors {
    * index-th date gets {@code palette[size * index / count]}. Fewer than two commits get no colors.
    */
   public static Map<String, Integer> byCommit(Blame blame, boolean dark) {
+    java.util.Set<String> shown = new java.util.HashSet<>(blame.lineHashes());
     List<BlameCommit> commits = blame.commits().values().stream()
-      .filter(commit -> !Blame.UNCOMMITTED.equals(commit.hash()) && blame.lineHashes().contains(commit.hash()))
+      .filter(commit -> !Blame.UNCOMMITTED.equals(commit.hash()) && shown.contains(commit.hash()))
       .toList();
     if (commits.size() < 2) {
       return Map.of();

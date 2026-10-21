@@ -124,4 +124,47 @@ class ChangeMarkerPainterTest extends SwtTest {
     assertThat(ChangeMarkerPainter.rangeAt(ranges, GEOMETRY, 48)).isEqualTo(-1);
     assertThat(ChangeMarkerPainter.rangeAt(ranges, GEOMETRY, 96 + 6)).isEqualTo(-1);
   }
+
+  @Test
+  void aBlockThatStartsInAFoldShowsOnTheFoldLine() {
+    // Lines 3 and 4 are folded under line 2; line 5 shows in row 3.
+    LineGeometry folded = new LineGeometry() {
+      @Override
+      public int lineHeight() {
+        return 16;
+      }
+
+      @Override
+      public int top(int modelLine) {
+        if (modelLine <= 2) {
+          return modelLine * 16;
+        }
+        if (modelLine <= 4) {
+          return 2 * 16;
+        }
+        return (modelLine - 2) * 16;
+      }
+
+      @Override
+      public boolean visible(int modelLine) {
+        return modelLine < 3 || modelLine > 4;
+      }
+    };
+    Image image = new Image(display, ChangeMarkerPainter.WIDTH, 200);
+    GC gc = new GC(image);
+    ImageData data;
+    try {
+      gc.setBackground(display.getSystemColor(org.eclipse.swt.SWT.COLOR_WHITE));
+      gc.fillRectangle(0, 0, ChangeMarkerPainter.WIDTH, 200);
+      ChangeMarkerPainter.paint(gc, List.of(inserted(4, 5)), folded, -1, false);
+      data = image.getImageData();
+    }
+    finally {
+      gc.dispose();
+      image.dispose();
+    }
+
+    assertThat(pixel(data, 4, 2 * 16 + 8)).isEqualTo(ADDED);
+    assertThat(ChangeMarkerPainter.rangeAt(List.of(inserted(4, 5)), folded, 2 * 16 + 8)).isEqualTo(0);
+  }
 }

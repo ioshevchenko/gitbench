@@ -35,6 +35,9 @@ public final class AnnotatePainter {
   private Blame laidOut;
   private int dateWidth;
   private int totalWidth;
+  /** The newest commit of the blame, found once per blame. */
+  private String lastCommit;
+  private final Map<Integer, Color> backgrounds = new java.util.HashMap<>();
 
   public AnnotatePainter(Font font) {
     this.font = font;
@@ -50,9 +53,8 @@ public final class AnnotatePainter {
   public void paint(GC gc, Blame blame, Map<String, Integer> colors, LineGeometry geometry, boolean dark, Clock clock, int width) {
     layout(blame, clock);
     gc.setFont(font);
-    String lastCommit = lastCommit(blame);
-    int lineHeight = geometry.lineHeight();
-    for (int line = 0; line < blame.lineHashes().size(); line++) {
+    int last = Math.min(blame.lineHashes().size() - 1, geometry.lastVisibleLine());
+    for (int line = Math.max(0, geometry.firstVisibleLine()); line <= last; line++) {
       if (!geometry.visible(line)) {
         continue;
       }
@@ -61,13 +63,15 @@ public final class AnnotatePainter {
         continue;
       }
       int y = geometry.top(line);
+      // Lines differ in height with code minings or line spacing.
+      int lineHeight = Math.max(geometry.top(line + 1) - y, geometry.lineHeight());
       Integer rgb = colors.get(commit.get().hash());
       if (rgb != null) {
-        gc.setBackground(new Color(rgb >> 16, rgb >> 8 & 0xFF, rgb & 0xFF));
+        gc.setBackground(backgrounds.computeIfAbsent(rgb, value -> new Color(value >> 16, value >> 8 & 0xFF, value & 0xFF)));
         gc.fillRectangle(0, y, width, lineHeight);
       }
-      boolean last = commit.get().hash().equals(lastCommit);
-      gc.setForeground(last ? (dark ? DARK_LAST_COMMIT : LIGHT_LAST_COMMIT) : (dark ? DARK_TEXT : LIGHT_TEXT));
+      boolean newest = commit.get().hash().equals(lastCommit);
+      gc.setForeground(newest ? (dark ? DARK_LAST_COMMIT : LIGHT_LAST_COMMIT) : (dark ? DARK_TEXT : LIGHT_TEXT));
       int textY = y + (lineHeight - gc.getFontMetrics().getHeight()) / 2;
       gc.drawText(PrettyDate.format(commit.get().authorTime(), clock), PADDING, textY, SWT.DRAW_TRANSPARENT);
       gc.drawText(commit.get().author(), PADDING + dateWidth + GAP, textY, SWT.DRAW_TRANSPARENT);
@@ -106,6 +110,7 @@ public final class AnnotatePainter {
       }
       dateWidth = dates;
       totalWidth = PADDING + dates + GAP + authors + PADDING;
+      lastCommit = lastCommit(blame);
       laidOut = blame;
     }
     finally {
