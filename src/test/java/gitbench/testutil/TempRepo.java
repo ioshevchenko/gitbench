@@ -43,7 +43,9 @@ public final class TempRepo {
   public static TempRepo cloneOf(TempRepo remote) {
     try {
       Path dir = Files.createTempDirectory("gitbench-clone").toRealPath();
-      runGit(dir, "clone", "-q", remote.root().toString(), ".");
+      // The clone checks out with the same settings as configure(); a global core.autocrlf=true, as on a Windows CI
+      // runner, would otherwise write CRLF files that block a later merge.
+      runGit(dir, "clone", "-q", "-c", "core.autocrlf=false", remote.root().toString(), ".");
       TempRepo repo = new TempRepo(dir);
       repo.configure();
       return repo;
