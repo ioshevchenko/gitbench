@@ -94,4 +94,52 @@ class MergeContentLoaderTest {
 
     assertThat(load(repo).lineSeparator()).isEqualTo("\r\n");
   }
+
+  @Test
+  void autocrlfWorkingFileGivesCrlfSeparator() throws Exception {
+    TempRepo repo = TempRepo.init();
+    repo.git("config", "core.autocrlf", "true");
+    repo.write("a.c", "base\r\n");
+    repo.commitAll("base");
+    repo.git("checkout", "-q", "-b", "feature");
+    repo.write("a.c", "theirs\r\n");
+    repo.commitAll("theirs");
+    repo.git("checkout", "-q", "main");
+    repo.write("a.c", "ours\r\n");
+    repo.commitAll("ours");
+    repo.gitMayFail("merge", "-q", "feature");
+
+    // The stage blobs hold LF; the working file holds CRLF, and the result must keep it.
+    assertThat(load(repo).lineSeparator()).isEqualTo("\r\n");
+  }
+
+  @Test
+  void bomFileKeepsBomAndUtf8() throws Exception {
+    TempRepo repo = TempRepo.init();
+    byte[] bom = {(byte)0xEF, (byte)0xBB, (byte)0xBF};
+    java.util.function.Function<String, byte[]> withBom = text -> {
+      byte[] body = text.getBytes(StandardCharsets.UTF_8);
+      byte[] all = new byte[bom.length + body.length];
+      System.arraycopy(bom, 0, all, 0, bom.length);
+      System.arraycopy(body, 0, all, bom.length, body.length);
+      return all;
+    };
+    Files.write(repo.root().resolve("a.c"), withBom.apply("база" + "\n"));
+    repo.commitAll("base");
+    repo.git("checkout", "-q", "-b", "feature");
+    Files.write(repo.root().resolve("a.c"), withBom.apply("их" + "\n"));
+    repo.commitAll("theirs");
+    repo.git("checkout", "-q", "main");
+    Files.write(repo.root().resolve("a.c"), withBom.apply("наши" + "\n"));
+    repo.commitAll("ours");
+    repo.gitMayFail("merge", "-q", "feature");
+    GitRepository repository = new GitRepository(repo.root());
+
+    MergeContents contents = MergeContentLoader.load(runner, repository, service.list(repository).get(0), service.context(repository),
+                                                     java.nio.charset.Charset.forName("windows-1252"));
+
+    assertThat(contents.bom()).isTrue();
+    assertThat(contents.charset()).isEqualTo(StandardCharsets.UTF_8);
+    assertThat(contents.yours().text()).isEqualTo("наши\n");
+  }
 }

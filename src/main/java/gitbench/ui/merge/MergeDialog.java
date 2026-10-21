@@ -69,6 +69,8 @@ public final class MergeDialog extends Dialog {
     this.charset = charset;
     baseText = DiffText.of(contents.base().text()).text();
     resultDocument = new Document(baseText);
+    // Enter in an empty or one-line Result would insert the system CRLF; the Result keeps LF like the model.
+    resultDocument.setInitialLineDelimiter("\n");
     setShellStyle(getShellStyle() | SWT.RESIZE | SWT.MAX);
   }
 
@@ -250,7 +252,7 @@ public final class MergeDialog extends Dialog {
   private void save() {
     Path target = repository.root().resolve(file.path());
     try {
-      MergeResultWriter.write(target, resultDocument.get(), contents.lineSeparator(), charset);
+      MergeResultWriter.write(target, resultDocument.get(), contents.lineSeparator(), contents.charset(), contents.bom());
       new ConflictService(Activator.getDefault().gitRunner()).markResolved(repository, file.path());
     }
     catch (IOException e) {

@@ -14,7 +14,7 @@ class MergeSaveTest {
   void savesResultWithOriginalLineSeparators() throws Exception {
     Path file = Files.createTempFile("gitbench-merge", ".c");
 
-    MergeResultWriter.write(file, "a\nb\n", "\r\n", StandardCharsets.UTF_8);
+    MergeResultWriter.write(file, "a\nb\n", "\r\n", StandardCharsets.UTF_8, false);
 
     assertThat(Files.readString(file)).isEqualTo("a\r\nb\r\n");
   }
@@ -24,8 +24,28 @@ class MergeSaveTest {
     Path file = Files.createTempFile("gitbench-merge", ".c");
     Charset cp1251 = Charset.forName("windows-1251");
 
-    MergeResultWriter.write(file, "// привет\n", "\n", cp1251);
+    MergeResultWriter.write(file, "// привет\n", "\n", cp1251, false);
 
     assertThat(Files.readAllBytes(file)).isEqualTo("// привет\n".getBytes(cp1251));
+  }
+
+  @Test
+  void typedCrlfDoesNotDoubleSeparators() throws Exception {
+    Path file = Files.createTempFile("gitbench-merge", ".c");
+
+    MergeResultWriter.write(file, "a\r\nb\n", "\r\n", StandardCharsets.UTF_8, false);
+
+    assertThat(Files.readString(file)).isEqualTo("a\r\nb\r\n");
+  }
+
+  @Test
+  void writesBomWhenTheFileHadOne() throws Exception {
+    Path file = Files.createTempFile("gitbench-merge", ".c");
+
+    MergeResultWriter.write(file, "a\n", "\n", StandardCharsets.UTF_8, true);
+
+    byte[] bytes = Files.readAllBytes(file);
+    assertThat(bytes).startsWith((byte)0xEF, (byte)0xBB, (byte)0xBF);
+    assertThat(bytes).hasSize(5);
   }
 }

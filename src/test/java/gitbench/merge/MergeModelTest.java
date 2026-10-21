@@ -205,4 +205,15 @@ class MergeModelTest {
     assertThat(model.next(0)).isSameAs(model.changes().get(2));
     assertThat(model.previous(4)).isSameAs(model.changes().get(0));
   }
+
+  @Test
+  void typedCrlfKeepsBlockOffsets() {
+    MergeModel model = model("int a;", "int x;", "int b;");
+
+    // Enter in a one-line document may insert CRLF; the block grows over the typed line, as in IntelliJ.
+    result.type(0, 6, 0, "\r\nint y;");
+    model.replaceChange(model.changes().get(0), Side.LEFT);
+
+    assertThat(result.text()).isEqualTo("int a;");
+  }
 }

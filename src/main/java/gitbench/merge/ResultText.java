@@ -1,7 +1,5 @@
 package gitbench.merge;
 
-import gitbench.diff.DiffText;
-
 import java.util.List;
 
 /**
@@ -34,7 +32,7 @@ public abstract class ResultText {
     if (model == null) {
       return;
     }
-    DiffText current = DiffText.of(text());
+    Lines current = Lines.of(text());
     int line1 = current.lineOf(offset);
     int line2 = current.lineOf(offset + length) + 1;
     int shift = countNewLines(newText) - countNewLines(text().substring(offset, offset + length));
@@ -42,7 +40,7 @@ public abstract class ResultText {
   }
 
   public int lineCount() {
-    return DiffText.of(text()).lineCount();
+    return Lines.of(text()).lineCount();
   }
 
   /** The text of lines {@code [start, end)}, joined with '\n', without the last separator. */
@@ -50,7 +48,7 @@ public abstract class ResultText {
     if (start >= end) {
       return "";
     }
-    DiffText current = DiffText.of(text());
+    Lines current = Lines.of(text());
     return text().substring(current.lineStart(start), current.lineEnd(end - 1));
   }
 
@@ -59,7 +57,7 @@ public abstract class ResultText {
     if (line1 == line2 && newLines.isEmpty()) {
       return;
     }
-    DiffText current = DiffText.of(text());
+    Lines current = Lines.of(text());
     int length = text().length();
     String content = String.join("\n", newLines);
     if (line1 == line2) {
@@ -94,5 +92,45 @@ public abstract class ResultText {
       }
     }
     return count;
+  }
+
+  /**
+   * The line index of the raw Result text. Only '\n' ends a line, and a '\r' stays in the line: the offsets then
+   * always match the document, even when Enter typed a CRLF into it.
+   */
+  private record Lines(String text, int[] starts) {
+    static Lines of(String text) {
+      int count = 1;
+      for (int i = 0; i < text.length(); i++) {
+        if (text.charAt(i) == '\n') {
+          count++;
+        }
+      }
+      int[] starts = new int[count];
+      int line = 1;
+      for (int i = 0; i < text.length(); i++) {
+        if (text.charAt(i) == '\n') {
+          starts[line++] = i + 1;
+        }
+      }
+      return new Lines(text, starts);
+    }
+
+    int lineCount() {
+      return starts.length;
+    }
+
+    int lineStart(int line) {
+      return starts[line];
+    }
+
+    int lineEnd(int line) {
+      return line + 1 < starts.length ? starts[line + 1] - 1 : text.length();
+    }
+
+    int lineOf(int offset) {
+      int index = java.util.Arrays.binarySearch(starts, offset);
+      return index >= 0 ? index : -index - 2;
+    }
   }
 }
