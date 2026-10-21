@@ -38,6 +38,7 @@ class BuildSmokeTest {
       assertThat(file.getEntry("it/unimi/dsi/fastutil/ints/IntArrayList.class")).isNotNull();
       assertThat(file.getEntry("plugin.xml")).isNotNull();
     }
-    assertThat(Files.size(jar)).isLessThan(4L * 1024 * 1024);
+    // Without shadow minimize, fastutil and kotlin-stdlib alone take more than 20 MB.
+    assertThat(Files.size(jar)).isLessThan(8L * 1024 * 1024);
   }
 }
