@@ -19,6 +19,13 @@
             class="gitbench.ui.branch.BranchesView"
             icon="icons/png/light/vcs.png"/>
    </extension>
+   <extension point="org.eclipse.ui.editors">
+      <editor id="gitbench.editors.diff"
+            name="Diff"
+            icon="icons/png/light/diff.png"
+            class="gitbench.ui.diff.DiffEditor"
+            default="false"/>
+   </extension>
    <extension point="org.eclipse.ui.preferencePages">
       <page id="gitbench.preferences"
             name="Gitbench"

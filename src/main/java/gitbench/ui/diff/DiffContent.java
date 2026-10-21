@@ -1,0 +1,18 @@
+package gitbench.ui.diff;
+
+import gitbench.diff.DiffChange;
+import gitbench.diff.DiffText;
+import org.eclipse.jface.text.IDocument;
+
+import java.util.List;
+
+/**
+ * What a diff viewer shows: the two documents with their column titles, and the blocks computed from the texts
+ * {@code leftText} and {@code rightText}. The texts are snapshots of the documents taken for that computation.
+ */
+record DiffContent(IDocument left, IDocument right, String leftTitle, String rightTitle, boolean rightEditable,
+                   boolean localChanges, String fileName, DiffText leftText, DiffText rightText, List<DiffChange> changes) {
+  DiffContent withChanges(DiffText newLeft, DiffText newRight, List<DiffChange> newChanges) {
+    return new DiffContent(left, right, leftTitle, rightTitle, rightEditable, localChanges, fileName, newLeft, newRight, newChanges);
+  }
+}
