@@ -84,6 +84,25 @@ class AnnotateColumnTest extends SwtTest {
   }
 
   @Test
+  void theColumnFollowsTheEditorFont() throws Exception {
+    TempRepo repo = repo();
+    EditorStub stub = new EditorStub(shell, repo.root().resolve("a.c"), new Document("a\nb\n"));
+    AnnotateColumn column = open(stub);
+    waitFor(() -> column.blame() != null && column.getWidth() > 0);
+    int width = column.getWidth();
+    org.eclipse.swt.graphics.Font big = new org.eclipse.swt.graphics.Font(display, display.getSystemFont().getFontData()[0].getName(), 30,
+                                                                          org.eclipse.swt.SWT.NORMAL);
+
+    // Text zoom (Ctrl+=) gives the editor a new font.
+    stub.viewer.getTextWidget().setFont(big);
+    column.setFont(big);
+    column.getControl().redraw();
+
+    waitFor(() -> column.getWidth() > width);
+    big.dispose();
+  }
+
+  @Test
   void closingWhileTheBlameRunsThrowsNothing() throws Exception {
     catchUncaught();
     TempRepo repo = repo();

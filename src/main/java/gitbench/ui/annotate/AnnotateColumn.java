@@ -66,7 +66,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   private static final int BLAME_DELAY_MS = 500;
   private static final DateTimeFormatter TOOLTIP_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(ZoneId.systemDefault());
   private static final int SHORT_HASH = 8;
-  private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+  /** One thread for all blames: a blame for an older text is skipped before git starts, so blames never pile up. */
+  private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
     Thread thread = new Thread(runnable, "Gitbench annotate");
     thread.setDaemon(true);
     return thread;
@@ -79,6 +80,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   /** Kept apart from the canvas: a blame may end after the canvas is disposed. */
   private org.eclipse.swt.widgets.Display display;
   private AnnotatePainter painter;
+  private Font painterFont;
   private IDocument document;
   private Path file;
   private Charset charset;
@@ -91,7 +93,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   private Blame blame;
   private Map<String, Integer> colors = Map.of();
   private int width;
-  private int generation;
+  /** Written on the UI thread, read by the blame thread to skip an outdated blame. */
+  private volatile int generation;
   private boolean disposed;
   private final Runnable blameLater = this::reblame;
   private final IDocumentListener documentListener = new IDocumentListener() {
@@ -146,7 +149,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     display = parentControl.getDisplay();
     viewer = parentRuler.getTextViewer();
     geometry = new ViewerGeometry(viewer);
-    painter = new AnnotatePainter(viewer.getTextWidget().getFont());
+    painterFont = viewer.getTextWidget().getFont();
+    painter = new AnnotatePainter(painterFont);
     canvas = new Canvas(parentControl, SWT.NO_FOCUS | SWT.DOUBLE_BUFFERED);
     canvas.addListener(SWT.Paint, this::paint);
     canvas.addListener(SWT.MouseMove, e -> canvas.setToolTipText(tooltip(geometry.lineAt(e.y))));
@@ -236,6 +240,9 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     GitRunner runner = Activator.probeRunner();
     boolean dark = Theme.isDark();
     EXECUTOR.execute(() -> {
+      if (expected != generation) {
+        return;
+      }
       try {
         if (!keySearched) {
           key = LineStatusBase.find(new RepositoryLocator(runner), blamed).orElse(null);
@@ -282,6 +289,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   }
 
   private void paint(Event e) {
+    // Not every zoom path calls setFont on the ruler columns; the text widget always has the font.
+    followFont(viewer.getTextWidget().getFont());
     // The editor background, not the ruler one: in the dark theme Eclipse may leave ruler parts light.
     e.gc.setBackground(viewer.getTextWidget().getBackground());
     e.gc.fillRectangle(canvas.getClientArea());
@@ -383,8 +392,21 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     rebindIfInputChanged();
   }
 
+  /** Text zoom gives the editor a new font; the column measures and paints with it. */
   @Override
   public void setFont(Font font) {
+    followFont(font);
+  }
+
+  private void followFont(Font font) {
+    if (painter == null || font == null || font.isDisposed() || font.equals(painterFont)) {
+      return;
+    }
+    painterFont = font;
+    painter = new AnnotatePainter(font);
+    if (blame != null) {
+      relayout();
+    }
   }
 
   @Override
