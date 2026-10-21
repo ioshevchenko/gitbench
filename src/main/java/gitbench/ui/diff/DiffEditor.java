@@ -37,7 +37,7 @@ import org.eclipse.swt.custom.StackLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.IActionBars;
 import org.eclipse.ui.IEditorInput;
@@ -80,6 +80,11 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
 
     @Override
     public void documentChanged(DocumentEvent event) {
+      if (Display.getCurrent() == null) {
+        // A change from another thread, for example a reload without the UI context: handle it on the UI thread.
+        asyncExec(() -> documentChanged(event));
+        return;
+      }
       documentVersion++;
       firePropertyChange(PROP_DIRTY);
       scheduleRediff();
@@ -239,7 +244,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       SideDocuments.manager().removeFileBufferListener(bufferListener);
     }
     if (connectedFile != null) {
-      SideDocuments.disconnect(connectedFile);
+      SideDocuments.disconnect(connectedFile, buffer);
     }
     buffer = null;
     connectedFile = null;
@@ -290,8 +295,14 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       LoadedContent result = loaded;
       asyncExec(() -> {
         if (generation == loadGeneration && content != null && content.left() == leftDocument && !result.binary()) {
-          leftDocument.set(DiffText.of(result.text()).text());
+          String text = DiffText.of(result.text()).text();
           content = content.withLeftTitle(result.title());
+          if (text.equals(leftDocument.get())) {
+            // Most events (a fetch, a commit of another file) leave the side as it is; a set would scroll to the top.
+            pane.setContent(content);
+            return;
+          }
+          leftDocument.set(text);
           pane.setContent(content);
           rediff();
         }
@@ -405,25 +416,25 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   }
 
   @Override
-  public boolean handleKey(Event event) {
-    int modifiers = event.stateMask & SWT.MODIFIER_MASK;
-    if (event.keyCode == SWT.F7 && modifiers == 0) {
+  public boolean handleKey(int keyCode, int stateMask) {
+    int modifiers = stateMask & SWT.MODIFIER_MASK;
+    if (keyCode == SWT.F7 && modifiers == 0) {
       nextDifference();
       return true;
     }
-    if (event.keyCode == SWT.F7 && modifiers == SWT.SHIFT) {
+    if (keyCode == SWT.F7 && modifiers == SWT.SHIFT) {
       previousDifference();
       return true;
     }
-    if (event.keyCode == SWT.ARROW_RIGHT && modifiers == (SWT.ALT | SWT.SHIFT)) {
+    if (keyCode == SWT.ARROW_RIGHT && modifiers == (SWT.ALT | SWT.SHIFT)) {
       nextFile();
       return true;
     }
-    if (event.keyCode == SWT.ARROW_LEFT && modifiers == (SWT.ALT | SWT.SHIFT)) {
+    if (keyCode == SWT.ARROW_LEFT && modifiers == (SWT.ALT | SWT.SHIFT)) {
       previousFile();
       return true;
     }
-    if ((event.keyCode == 'r' || event.keyCode == 'R') && modifiers == (SWT.CTRL | SWT.ALT)) {
+    if ((keyCode == 'r' || keyCode == 'R') && modifiers == (SWT.CTRL | SWT.ALT)) {
       DiffChange change = pane != null ? pane.changeAtCaret() : null;
       if (change != null) {
         apply(change, false);

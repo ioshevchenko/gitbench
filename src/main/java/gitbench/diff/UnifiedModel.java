@@ -37,12 +37,22 @@ public final class UnifiedModel {
     int rightLine = 0;
     for (int i = 0; i <= changes.size(); i++) {
       DiffChange change = i < changes.size() ? changes.get(i) : null;
-      int contextEnd = change != null ? change.startLine2() : right.lineCount();
-      while (rightLine < contextEnd) {
-        leftToUnified[leftLine] = lines.size();
+      // An equal region can have more lines on one side: "Ignore whitespaces and empty lines" drops blocks of blank
+      // lines. The right lines are shown; the left lines pair with them in order, and extra left lines join the last one.
+      int rightEnd = change != null ? change.startLine2() : right.lineCount();
+      int leftEnd = change != null ? change.startLine1() : left.lineCount();
+      int regionStart = lines.size();
+      while (rightLine < rightEnd) {
+        int pairedLeft = leftLine < leftEnd ? leftLine++ : -1;
+        if (pairedLeft >= 0) {
+          leftToUnified[pairedLeft] = lines.size();
+        }
         rightToUnified[rightLine] = lines.size();
         append(text, lines.size(), right, rightLine);
-        lines.add(new UnifiedLine(UnifiedLine.Kind.CONTEXT, leftLine++, rightLine++, -1));
+        lines.add(new UnifiedLine(UnifiedLine.Kind.CONTEXT, pairedLeft, rightLine++, -1));
+      }
+      for (; leftLine < leftEnd; leftLine++) {
+        leftToUnified[leftLine] = Math.max(regionStart, lines.size() - 1);
       }
       if (change == null) {
         break;

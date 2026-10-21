@@ -43,4 +43,38 @@ class UnifiedModelTest {
 
     assertThat(model.innerRanges()).containsExactly(new InnerRange(1, 8, 9), new InnerRange(2, 8, 9));
   }
+
+  private static UnifiedModel buildTrimmed(String left, String right) {
+    DiffText l = DiffText.of(left);
+    DiffText r = DiffText.of(right);
+    return UnifiedModel.build(l, r, DiffModel.compute(l, r, IgnorePolicy.IGNORE_WHITESPACES_CHUNKS, HighlightPolicy.BY_WORD));
+  }
+
+  @Test
+  void ignoredBlankLineOnRightDoesNotBreakLayout() {
+    UnifiedModel model = buildTrimmed("a\nb\n", "a\n\nb\n");
+
+    assertThat(model.text()).isEqualTo("a\n\nb\n");
+    assertLeftNumbersIncrease(model, 3);
+  }
+
+  @Test
+  void ignoredBlankLineOnLeftDoesNotBreakLayout() {
+    UnifiedModel model = buildTrimmed("a\n\nb\n", "a\nb\n");
+
+    assertThat(model.text()).isEqualTo("a\nb\n");
+    assertLeftNumbersIncrease(model, 4);
+    assertThat(model.unifiedLineOf(Side.LEFT, 3)).isBetween(0, model.lines().size() - 1);
+  }
+
+  /** Under the trim policy equal regions differ in length; the left numbers stay in range and in order. */
+  private static void assertLeftNumbersIncrease(UnifiedModel model, int leftLineCount) {
+    int previous = -1;
+    for (UnifiedLine line : model.lines()) {
+      if (line.leftLine() >= 0) {
+        assertThat(line.leftLine()).isGreaterThan(previous).isLessThan(leftLineCount);
+        previous = line.leftLine();
+      }
+    }
+  }
 }

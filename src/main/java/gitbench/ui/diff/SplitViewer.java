@@ -128,8 +128,9 @@ final class SplitViewer implements DiffPane {
       }
     });
     text.addListener(SWT.FocusIn, e -> focused = side);
-    text.addListener(SWT.KeyDown, e -> {
-      if (host.handleKey(e)) {
+    // Before StyledText handles the key, so a consumed key such as Ctrl+Alt+R (AltGr on some layouts) types nothing.
+    viewer.prependVerifyKeyListener(e -> {
+      if (host.handleKey(e.keyCode, e.stateMask)) {
         e.doit = false;
       }
     });

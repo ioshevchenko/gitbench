@@ -3,7 +3,6 @@ package gitbench.ui.diff;
 import gitbench.diff.DiffChange;
 import org.eclipse.jface.text.ITextOperationTarget;
 import org.eclipse.swt.widgets.Control;
-import org.eclipse.swt.widgets.Event;
 
 /** A diff viewer inside the diff editor: Side-by-side or Unified. */
 interface DiffPane {
@@ -13,7 +12,7 @@ interface DiffPane {
     void apply(DiffChange change, boolean append);
 
     /** Handles a key that works in the whole diff editor. Returns true when the key is consumed. */
-    boolean handleKey(Event event);
+    boolean handleKey(int keyCode, int stateMask);
 
     void contentChanged();
   }

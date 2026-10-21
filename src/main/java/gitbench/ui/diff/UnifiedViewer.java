@@ -109,8 +109,9 @@ final class UnifiedViewer implements DiffPane {
       e.lineBackground = change.hasInner() ? DiffColors.ignoredColor(kind, dark, text.getBackground()) : DiffColors.color(kind, dark);
     });
     viewer.addTextPresentationListener(this::addWords);
-    text.addListener(SWT.KeyDown, e -> {
-      if (host.handleKey(e)) {
+    // Before StyledText handles the key, so a consumed key such as Ctrl+Alt+R (AltGr on some layouts) types nothing.
+    viewer.prependVerifyKeyListener(e -> {
+      if (host.handleKey(e.keyCode, e.stateMask)) {
         e.doit = false;
       }
     });
