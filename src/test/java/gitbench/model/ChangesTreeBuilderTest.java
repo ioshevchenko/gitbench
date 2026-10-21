@@ -70,4 +70,15 @@ class ChangesTreeBuilderTest {
     List<Root> roots = ChangesTreeBuilder.build(List.of(mod("a.c")), true);
     assertThat(roots.get(0).children()).containsExactly(new File(mod("a.c")));
   }
+
+  @Test
+  void conflictsGetOwnRoot() {
+    List<ChangesTreeNode.Root> roots = ChangesTreeBuilder.build(List.of(
+      new FileChange("src/a.c", null, ChangeKind.CONFLICT),
+      new FileChange("src/b.c", null, ChangeKind.MODIFIED)), false);
+
+    assertThat(roots).extracting(ChangesTreeNode.Root::title).containsExactly("Merge Conflicts", "Changes");
+    assertThat(roots.get(0).fileCount()).isEqualTo(1);
+    assertThat(roots.get(1).fileCount()).isEqualTo(1);
+  }
 }

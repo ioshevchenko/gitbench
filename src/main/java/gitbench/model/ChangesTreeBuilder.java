@@ -16,6 +16,7 @@ import java.util.TreeMap;
 public final class ChangesTreeBuilder {
   public static final String CHANGES = "Changes";
   public static final String UNVERSIONED_FILES = "Unversioned Files";
+  public static final String MERGE_CONFLICTS = "Merge Conflicts";
 
   private static final Comparator<FileChange> BY_FILE_NAME =
     Comparator.comparing(FileChange::fileName, String.CASE_INSENSITIVE_ORDER).thenComparing(FileChange::path);
@@ -23,11 +24,18 @@ public final class ChangesTreeBuilder {
   private ChangesTreeBuilder() {
   }
 
-  /** Returns the "Changes" root, and the "Unversioned Files" root when there are unversioned files. */
+  /**
+   * Returns the "Changes" root, the "Unversioned Files" root when there are unversioned files, and before them the
+   * "Merge Conflicts" root when there are conflicted files, as IntelliJ shows them.
+   */
   public static List<Root> build(List<FileChange> changes, boolean groupByDirectory) {
-    List<FileChange> tracked = changes.stream().filter(c -> c.kind() != ChangeKind.UNVERSIONED).toList();
+    List<FileChange> conflicts = changes.stream().filter(c -> c.kind() == ChangeKind.CONFLICT).toList();
+    List<FileChange> tracked = changes.stream().filter(c -> c.kind() != ChangeKind.UNVERSIONED && c.kind() != ChangeKind.CONFLICT).toList();
     List<FileChange> unversioned = changes.stream().filter(c -> c.kind() == ChangeKind.UNVERSIONED).toList();
     List<Root> roots = new ArrayList<>();
+    if (!conflicts.isEmpty()) {
+      roots.add(new Root(MERGE_CONFLICTS, children(conflicts, groupByDirectory), conflicts.size(), false));
+    }
     roots.add(new Root(CHANGES, children(tracked, groupByDirectory), tracked.size(), false));
     if (!unversioned.isEmpty()) {
       roots.add(new Root(UNVERSIONED_FILES, children(unversioned, groupByDirectory), unversioned.size(), true));

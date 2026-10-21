@@ -116,8 +116,19 @@ public final class CommitView extends ViewPart {
     tree = new ChangesTreeViewer(sash, inclusion, this::updateButtons);
     tree.viewer().addSelectionChangedListener(e -> updateActions());
     tree.viewer().addDoubleClickListener(e -> {
-      if (tree.onlyFilesSelected()) {
-        showDiff(tree.selectedChanges());
+      Object first = tree.viewer().getStructuredSelection().getFirstElement();
+      if (first instanceof gitbench.model.ChangesTreeNode.Root clickedRoot
+          && clickedRoot.title().equals(gitbench.model.ChangesTreeBuilder.MERGE_CONFLICTS)) {
+        resolveConflicts();
+      }
+      else if (tree.onlyFilesSelected()) {
+        List<FileChange> selected = tree.selectedChanges();
+        if (selected.size() == 1 && selected.get(0).kind() == ChangeKind.CONFLICT) {
+          currentRepository().ifPresent(repo -> gitbench.ui.merge.MergeOpener.merge(getSite().getShell(), repo, selected.get(0).path()));
+        }
+        else {
+          showDiff(selected);
+        }
       }
     });
     panel = new CommitPanel(sash, new CommitPanel.Listener() {
@@ -241,6 +252,12 @@ public final class CommitView extends ViewPart {
     List<gitbench.diff.DiffRequest> chain = files.stream().map(c -> gitbench.diff.DiffRequests.forLocalChange(repository.get(), c)).toList();
     gitbench.diff.DiffRequest first = gitbench.diff.DiffRequests.forLocalChange(repository.get(), selected.get(0));
     gitbench.ui.diff.DiffOpener.open(getSite().getPage(), chain, gitbench.diff.DiffRequests.chain(chain, first));
+  }
+
+  /** Opens the conflicts window, as the Resolve link of the IntelliJ Merge Conflicts node. */
+  void resolveConflicts() {
+    currentRepository().ifPresent(repo -> gitbench.ui.merge.MergeOpener.showConflicts(getSite().getShell(), repo));
+    refresh();
   }
 
   Optional<GitRepository> currentRepository() {

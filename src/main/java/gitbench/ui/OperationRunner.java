@@ -17,7 +17,7 @@ import java.util.function.Consumer;
 
 /**
  * Runs a git operation of the Log or the Branches view in a job, then syncs the workspace, tells all views, and
- * shows the outcome: a status line text, an error, or a conflict dialog that offers the Commit view.
+ * shows the outcome: a status line text, an error, or the conflicts window.
  */
 public final class OperationRunner {
   /** A git operation that reports its outcome. */
@@ -67,7 +67,7 @@ public final class OperationRunner {
         WorkspaceSync.refresh(repository);
         RepositoryEvents.fire(repository);
         if (!display.isDisposed()) {
-          display.asyncExec(() -> show(site, title, finalResult, onSuccess));
+          display.asyncExec(() -> show(site, repository, title, finalResult, onSuccess));
         }
         return Status.OK_STATUS;
       });
@@ -79,7 +79,8 @@ public final class OperationRunner {
     job.schedule();
   }
 
-  private static void show(IWorkbenchPartSite site, String title, OperationResult result, Consumer<OperationResult> onSuccess) {
+  private static void show(IWorkbenchPartSite site, GitRepository repository, String title, OperationResult result,
+                           Consumer<OperationResult> onSuccess) {
     Shell shell = site.getShell();
     if (shell.isDisposed()) {
       return;
@@ -92,11 +93,8 @@ public final class OperationRunner {
       return;
     }
     if (result.conflicts()) {
-      MessageDialog dialog = new MessageDialog(shell, title + ": Conflicts", null, result.message(), MessageDialog.WARNING,
-                                               0, "Open Commit View", "Close");
-      if (dialog.open() == 0) {
-        showCommitView(site);
-      }
+      // As IntelliJ: an operation that stops on conflicts opens the conflicts window at once.
+      gitbench.ui.merge.MergeOpener.showConflicts(shell, repository);
       return;
     }
     MessageDialog.openError(shell, title + " Failed", result.message());

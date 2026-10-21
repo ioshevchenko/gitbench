@@ -62,6 +62,10 @@ final class CommitContextMenu {
   private void fill(org.eclipse.jface.action.IMenuManager menu, List<FileChange> selected) {
     List<FileChange> versioned = selected.stream().filter(c -> c.kind() != ChangeKind.UNVERSIONED).toList();
     List<FileChange> unversioned = unversioned(selected);
+    if (selected.stream().anyMatch(c -> c.kind() == ChangeKind.CONFLICT)) {
+      menu.add(action("Resolve Conflicts...", true, view::resolveConflicts));
+      menu.add(new Separator());
+    }
     menu.add(action("Commit File...", !selected.isEmpty(), () -> commitFiles(selected)));
     menu.add(action("Rollback...", !versioned.isEmpty(), () -> view.rollback(versioned)));
     menu.add(action("Show Diff\tCtrl+D", !selected.isEmpty(), () -> view.showDiff(selected)));
