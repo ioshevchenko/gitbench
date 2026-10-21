@@ -14,7 +14,9 @@ import java.util.function.Supplier;
 
 /** Runs the git CLI. The path to the executable is read for every call, so a preference change applies at once. */
 public final class GitRunner {
-  private static final List<String> FIXED_OPTIONS = List.of("-c", "core.quotepath=false", "-c", "color.ui=false");
+  /** Paths from the UI are file names, never glob patterns, so every pathspec is literal. */
+  private static final List<String> FIXED_OPTIONS =
+    List.of("--literal-pathspecs", "-c", "core.quotepath=false", "-c", "color.ui=false");
 
   private final Supplier<String> gitPath;
   private final GitCommandListener listener;
@@ -39,7 +41,7 @@ public final class GitRunner {
       process = builder.start();
     }
     catch (IOException e) {
-      throw new GitException("Git executable not found: " + executable + ". Set the path in Preferences → Gitbench.", e);
+      throw startFailure(executable, e);
     }
     try {
       CompletableFuture<byte[]> out = CompletableFuture.supplyAsync(() -> readAll(process.getInputStream()));
@@ -71,6 +73,18 @@ public final class GitRunner {
       throw GitException.fromResult("git " + args.get(0), result);
     }
     return result.stdoutText();
+  }
+
+  /** Windows reports a missing executable as error 2 and a too long command line as error 206. */
+  private static GitException startFailure(String executable, IOException e) {
+    String reason = String.valueOf(e.getMessage());
+    if (reason.contains("error=206")) {
+      return new GitException("Git command line is too long: " + reason, e);
+    }
+    if (reason.contains("error=2,") || reason.contains("error=3,") || reason.contains("No such file")) {
+      return new GitException("Git executable not found: " + executable + ". Set the path in Preferences → Gitbench.", e);
+    }
+    return new GitException("Cannot start git (" + executable + "): " + reason, e);
   }
 
   private static byte[] readAll(InputStream stream) {

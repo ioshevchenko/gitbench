@@ -125,6 +125,25 @@ class CommitServiceTest {
   }
 
   @Test
+  void commitsFileWithGlobCharactersLiterally() throws Exception {
+    TempRepo repo = repoWithAB();
+    repo.write("file[1].c", "x\n");
+    repo.write("file1.c", "y\n");
+    GitRepository r = new GitRepository(repo.root());
+    commits.commit(r, "only brackets", List.of(new FileChange("file[1].c", null, ChangeKind.UNVERSIONED)), PLAIN);
+    assertThat(repo.git("show", "--name-only", "--format=", "HEAD").trim()).isEqualTo("file[1].c");
+  }
+
+  @Test
+  void keepsLinesStartingWithHash() throws Exception {
+    TempRepo repo = repoWithAB();
+    repo.write("a.c", "a2\n");
+    GitRepository r = new GitRepository(repo.root());
+    commits.commit(r, "#42 fix UART\n\n#43 also", List.of(modified("a.c")), PLAIN);
+    assertThat(commits.lastCommitMessage(r)).isEqualTo("#42 fix UART\n\n#43 also");
+  }
+
+  @Test
   void signOffAddsTrailer() throws Exception {
     TempRepo repo = repoWithAB();
     repo.write("a.c", "a2\n");

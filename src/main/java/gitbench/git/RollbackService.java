@@ -34,7 +34,7 @@ public final class RollbackService {
       }
     }
     if (!added.isEmpty()) {
-      runner.runOk(repo.root(), CommitService.withPaths(List.of("rm", "--cached", "-q", "-f"), added), null);
+      CommitService.runPathspec(runner, repo, List.of("rm", "--cached", "-q", "-f"), added);
       if (deleteAddedFiles) {
         for (String path : added) {
           try {
@@ -47,8 +47,7 @@ public final class RollbackService {
       }
     }
     if (!restore.isEmpty()) {
-      runner.runOk(repo.root(),
-                   CommitService.withPaths(List.of("restore", "--source=HEAD", "--staged", "--worktree"), restore), null);
+      CommitService.runPathspec(runner, repo, List.of("restore", "--source=HEAD", "--staged", "--worktree"), restore);
     }
   }
 }

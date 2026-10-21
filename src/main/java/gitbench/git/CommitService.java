@@ -1,6 +1,10 @@
 package gitbench.git;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,10 +32,33 @@ public final class CommitService {
     if (opts.author() != null && !opts.author().isBlank()) {
       args.add("--author=" + opts.author());
     }
-    args.add("--cleanup=strip");
-    args.add("-F");
-    args.add("-");
-    runner.runOk(repo.root(), withPaths(args, paths), message.getBytes(StandardCharsets.UTF_8));
+    args.add("--cleanup=whitespace");
+    Path messageFile = null;
+    try {
+      messageFile = Files.createTempFile("gitbench-commit", ".txt");
+      Files.writeString(messageFile, message, StandardCharsets.UTF_8);
+      args.add("-F");
+      args.add(messageFile.toString());
+      if (paths.isEmpty()) {
+        runner.runOk(repo.root(), args, null);
+      }
+      else {
+        runPathspec(repo, args, paths);
+      }
+    }
+    catch (IOException e) {
+      throw new GitException("Cannot write the commit message: " + e.getMessage(), e);
+    }
+    finally {
+      if (messageFile != null) {
+        try {
+          Files.deleteIfExists(messageFile);
+        }
+        catch (IOException ignored) {
+          // A leftover file in the temp folder harms nothing.
+        }
+      }
+    }
     return runner.runOk(repo.root(), List.of("rev-parse", "--short", "HEAD"), null).trim();
   }
 
@@ -50,7 +77,7 @@ public final class CommitService {
   /** Adds unversioned files to the index. */
   public void addToVcs(GitRepository repo, List<String> paths) throws GitException {
     if (!paths.isEmpty()) {
-      runner.runOk(repo.root(), withPaths(List.of("add"), paths), null);
+      runPathspec(repo, List.of("add"), paths);
     }
   }
 
@@ -69,11 +96,35 @@ public final class CommitService {
       }
     }
     if (!present.isEmpty()) {
-      runner.runOk(repo.root(), withPaths(List.of("add", "-A"), present), null);
+      runPathspec(repo, List.of("add", "-A"), present);
     }
     if (!gone.isEmpty()) {
-      runner.runOk(repo.root(), withPaths(List.of("rm", "--cached", "--ignore-unmatch", "-q"), gone), null);
+      runPathspec(repo, List.of("rm", "--cached", "--ignore-unmatch", "-q"), gone);
     }
+  }
+
+  /**
+   * Runs a git command on many paths. The paths go through stdin, because Windows limits the command line
+   * to 32 767 characters and a CubeMX project easily has more.
+   */
+  private void runPathspec(GitRepository repo, List<String> args, List<String> paths) throws GitException {
+    runPathspec(runner, repo, args, paths);
+  }
+
+  static void runPathspec(GitRunner runner, GitRepository repo, List<String> args, List<String> paths) throws GitException {
+    List<String> all = new ArrayList<>(args);
+    all.add("--pathspec-from-file=-");
+    all.add("--pathspec-file-nul");
+    runner.runOk(repo.root(), all, nulSeparated(paths));
+  }
+
+  private static byte[] nulSeparated(List<String> paths) {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    for (String path : paths) {
+      out.writeBytes(path.getBytes(StandardCharsets.UTF_8));
+      out.write(0);
+    }
+    return out.toByteArray();
   }
 
   private static Set<String> pathsOf(List<FileChange> changes) {
@@ -85,12 +136,5 @@ public final class CommitService {
       }
     }
     return paths;
-  }
-
-  static List<String> withPaths(List<String> args, List<String> paths) {
-    List<String> all = new ArrayList<>(args);
-    all.add("--");
-    all.addAll(paths);
-    return all;
   }
 }
