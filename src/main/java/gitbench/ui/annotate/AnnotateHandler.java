@@ -33,18 +33,32 @@ public final class AnnotateHandler extends AbstractHandler {
       AnnotateColumn.setVisible(editor, false);
       return null;
     }
-    String problem = problem(editor);
-    if (problem != null) {
-      editor.getEditorSite().getActionBars().getStatusLineManager().setErrorMessage(problem);
-      return null;
-    }
-    AnnotateColumn.setVisible(editor, true);
+    annotate(editor, problem -> editor.getEditorSite().getActionBars().getStatusLineManager().setErrorMessage(problem));
     return null;
   }
 
-  /** Why the file cannot be annotated, or null. */
-  private static String problem(ITextEditor editor) {
+  /** Shows the column when git tracks the file of the editor; otherwise gives the reason to {@code showProblem}. */
+  static void annotate(ITextEditor editor, java.util.function.Consumer<String> showProblem) {
+    org.eclipse.swt.widgets.Display display = org.eclipse.swt.widgets.Display.getCurrent();
     Optional<Path> file = EditorFiles.file(editor.getEditorInput());
+    // Git may be slow on a cold cache or a network share; the check must not freeze the menu.
+    Thread check = new Thread(() -> {
+      String problem = problem(file);
+      display.asyncExec(() -> {
+        if (problem != null) {
+          showProblem.accept(problem);
+        }
+        else {
+          AnnotateColumn.setVisible(editor, true);
+        }
+      });
+    }, "Gitbench annotate check");
+    check.setDaemon(true);
+    check.start();
+  }
+
+  /** Why the file cannot be annotated, or null. */
+  private static String problem(Optional<Path> file) {
     if (file.isEmpty()) {
       return "Cannot annotate: the file is not on disk";
     }
