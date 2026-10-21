@@ -19,7 +19,7 @@ public enum IgnorePolicy {
     return label;
   }
 
-  ComparisonPolicy comparisonPolicy() {
+  public ComparisonPolicy comparisonPolicy() {
     return switch (this) {
       case DEFAULT -> ComparisonPolicy.DEFAULT;
       case TRIM_WHITESPACES -> ComparisonPolicy.TRIM_WHITESPACES;
