@@ -16,6 +16,8 @@ Gitbench brings the Git tool windows of IntelliJ IDEA to Eclipse: the same layou
 - **Git Log** — the commit graph (ported from IntelliJ unchanged), branch and tag labels, filters (text or hash, branch, user, date, paths), commit details and changed files. Operations: Cherry-Pick, Revert, Checkout Revision, Reset, New Branch, New Tag.
 - **Branches** — a HEAD / Local / Remote tree with favorites and ahead/behind counters. Operations: Checkout, New Branch, Rename, Delete, Merge, Rebase, Compare with Current, Update.
 - **Git** — Branches and Git Log in one view, as the Log tab of the IntelliJ Git tool window. Hide Branches collapses the branches to a strip.
+- **Change markers** — added, modified and deleted lines against HEAD on the editor ruler. A click opens a popup with the HEAD text, Previous/Next Change, Rollback Lines, Show Diff for Lines and Copy.
+- **Annotate with Git Blame** — the date and the author of each line on the editor ruler, colored by the commit age. A click selects the commit in the Git Log.
 - **Diff** — an editor tab with Side-by-side and Unified viewers, as in IntelliJ:
   - word highlighting;
   - curved bands between the columns;
