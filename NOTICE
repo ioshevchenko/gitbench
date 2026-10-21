@@ -7,4 +7,7 @@ Licensed under the Apache License, Version 2.0.
 
 The commit graph (third_party/intellij-graph) is the IntelliJ Community modules
 platform/vcs-log/graph-api and platform/vcs-log/graph, Apache License 2.0.
+The text comparison (third_party/intellij-diff) is the IntelliJ Community module
+platform/util/diff and parts of platform/diff-api, platform/diff-impl, platform/util-rt,
+platform/util/base and platform/util/multiplatform, Apache License 2.0.
 The plugin jar bundles kotlin-stdlib (Apache License 2.0) and fastutil (Apache License 2.0).

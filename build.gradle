@@ -46,19 +46,23 @@ tasks.withType(JavaCompile).configureEach {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        // As in the IntelliJ modules: Kotlin interface methods with a body become Java default methods.
+        freeCompilerArgs.add('-Xjvm-default=all')
     }
 }
 
 // The commit graph is ported from IntelliJ Community as is (Java and Kotlin), with small shims for the platform.
+// The text comparison is ported the same way.
 def graphDir = 'third_party/intellij-graph'
+def diffDir = 'third_party/intellij-diff'
 sourceSets {
     main {
-        java.srcDirs += ["${graphDir}/src", "${graphDir}/shims"]
-        kotlin.srcDirs += ["${graphDir}/src", "${graphDir}/shims"]
+        java.srcDirs += ["${graphDir}/src", "${graphDir}/shims", "${diffDir}/src", "${diffDir}/shims"]
+        kotlin.srcDirs += ["${graphDir}/src", "${graphDir}/shims", "${diffDir}/src", "${diffDir}/shims"]
     }
     test {
-        java.srcDirs += ["${graphDir}/test", "${graphDir}/testShims"]
-        kotlin.srcDirs += ["${graphDir}/test", "${graphDir}/testShims"]
+        java.srcDirs += ["${graphDir}/test", "${graphDir}/testShims", "${diffDir}/test", "${diffDir}/testShims"]
+        kotlin.srcDirs += ["${graphDir}/test", "${graphDir}/testShims", "${diffDir}/test", "${diffDir}/testShims"]
     }
 }
 

@@ -22,6 +22,10 @@ public final class ContainerUtil {
   private ContainerUtil() {
   }
 
+  public static <T> T getLastItem(List<? extends T> list) {
+    return list == null || list.isEmpty() ? null : list.get(list.size() - 1);
+  }
+
   public static <T, V> List<V> map(Iterable<? extends T> iterable, Function<? super T, ? extends V> mapping) {
     List<V> result = new ArrayList<>();
     for (T t : iterable) {
