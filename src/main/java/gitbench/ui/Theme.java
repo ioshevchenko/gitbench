@@ -16,9 +16,15 @@ public final class Theme {
   private Theme() {
   }
 
+  /** Outside the running platform, as in the UI tests, the theme is light. */
   public static boolean isDark() {
-    String themeId = InstanceScope.INSTANCE.getNode("org.eclipse.e4.ui.css.swt.theme").get("themeid", "");
-    return themeId.toLowerCase(java.util.Locale.ROOT).contains("dark");
+    try {
+      String themeId = InstanceScope.INSTANCE.getNode("org.eclipse.e4.ui.css.swt.theme").get("themeid", "");
+      return themeId.toLowerCase(java.util.Locale.ROOT).contains("dark");
+    }
+    catch (RuntimeException | LinkageError e) {
+      return false;
+    }
   }
 
   /**

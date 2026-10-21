@@ -53,15 +53,23 @@ public final class MergeDialog extends Dialog {
   private final Charset charset;
   private final String baseText;
   private final Document resultDocument;
+  private final ConflictService service;
+  private final Runnable afterSave;
   private MergeToolbar toolbar;
   private Composite banner;
   private MergeColumns columns;
   private MergeModel model;
   private boolean resolved;
 
-  private MergeDialog(Shell shell, GitRepository repository, ConflictFile file, MergeContext context, MergeContents contents,
-                      Charset charset) {
+  /**
+   * {@code service} marks the file resolved; {@code afterSave} tells the workspace and the views. The UI tests pass
+   * their own, because they run without the plugin.
+   */
+  MergeDialog(Shell shell, GitRepository repository, ConflictFile file, MergeContext context, MergeContents contents,
+              Charset charset, ConflictService service, Runnable afterSave) {
     super(shell);
+    this.service = service;
+    this.afterSave = afterSave;
     this.repository = repository;
     this.file = file;
     this.context = context;
@@ -96,9 +104,34 @@ public final class MergeDialog extends Dialog {
                               file.path() + " is a binary file. Resolve it with Accept Yours or Accept Theirs.");
       return false;
     }
-    MergeDialog dialog = new MergeDialog(shell, repository, file, context, loaded[0], charset);
+    Runnable afterSave = () -> {
+      Job refresh = Job.create("Refresh " + file.path(), monitor -> {
+        WorkspaceSync.refresh(repository);
+        RepositoryEvents.fire(repository);
+        return Status.OK_STATUS;
+      });
+      refresh.setSystem(true);
+      refresh.schedule();
+    };
+    MergeDialog dialog = new MergeDialog(shell, repository, file, context, loaded[0], charset,
+                                         new ConflictService(Activator.getDefault().gitRunner()), afterSave);
     dialog.open();
-    return dialog.resolved;
+    return dialog.isResolved();
+  }
+
+  /** The columns, for the UI tests. */
+  MergeColumns columns() {
+    return columns;
+  }
+
+  /** The model, for the UI tests. */
+  MergeModel model() {
+    return model;
+  }
+
+  /** True after Apply, Accept Left or Accept Right saved the file. */
+  boolean isResolved() {
+    return resolved;
   }
 
   @Override
@@ -253,7 +286,7 @@ public final class MergeDialog extends Dialog {
     Path target = repository.root().resolve(file.path());
     try {
       MergeResultWriter.write(target, resultDocument.get(), contents.lineSeparator(), contents.charset(), contents.bom());
-      new ConflictService(Activator.getDefault().gitRunner()).markResolved(repository, file.path());
+      service.markResolved(repository, file.path());
     }
     catch (IOException e) {
       MessageDialog.openError(getShell(), "Apply Changes", "Error saving merged data: " + e.getMessage());
@@ -264,13 +297,7 @@ public final class MergeDialog extends Dialog {
       return;
     }
     resolved = true;
-    Job refresh = Job.create("Refresh " + file.path(), monitor -> {
-      WorkspaceSync.refresh(repository);
-      RepositoryEvents.fire(repository);
-      return Status.OK_STATUS;
-    });
-    refresh.setSystem(true);
-    refresh.schedule();
+    afterSave.run();
     setReturnCode(OK);
     close();
   }

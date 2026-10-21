@@ -31,7 +31,6 @@ import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentListener;
 import org.eclipse.jface.text.ITextOperationTarget;
-import org.eclipse.jface.text.TextUtilities;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StackLayout;
 import org.eclipse.swt.layout.GridData;
@@ -428,12 +427,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     if (edit == null) {
       return;
     }
-    IDocument document = content.right();
     try {
-      int start = document.getLineOffset(edit.startLine()) + edit.startColumn();
-      int end = document.getLineOffset(edit.endLine()) + edit.endColumn();
-      String delimiter = TextUtilities.getDefaultLineDelimiter(document);
-      document.replace(start, end - start, edit.text().replace("\n", delimiter));
+      DocumentEdits.apply(content.right(), edit);
     }
     catch (BadLocationException e) {
       Activator.getDefault().getLog().error("Cannot apply the diff block", e);

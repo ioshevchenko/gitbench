@@ -142,6 +142,16 @@ final class SplitViewer implements DiffPane {
     return control;
   }
 
+  /** The band between the columns, for the UI tests. */
+  Canvas divider() {
+    return divider;
+  }
+
+  /** The text widget of a column, for the UI tests. */
+  StyledText text(Side side) {
+    return viewer(side).getTextWidget();
+  }
+
   @Override
   public void setContent(DiffContent newContent) {
     DiffContent old = content;

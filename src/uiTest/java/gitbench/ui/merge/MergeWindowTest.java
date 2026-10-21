@@ -1,0 +1,227 @@
+package gitbench.ui.merge;
+
+import com.intellij.diff.util.ThreeSide;
+import gitbench.diff.DiffText;
+import gitbench.diff.IgnorePolicy;
+import gitbench.diff.Side;
+import gitbench.git.GitCommandListener;
+import gitbench.git.GitRepository;
+import gitbench.git.GitRunner;
+import gitbench.merge.ConflictFile;
+import gitbench.merge.ConflictService;
+import gitbench.merge.MergeChange;
+import gitbench.merge.MergeContentLoader;
+import gitbench.merge.MergeContents;
+import gitbench.merge.MergeContext;
+import gitbench.merge.MergeModel;
+import gitbench.testutil.TempRepo;
+import gitbench.ui.SwtTest;
+import org.eclipse.jface.text.Document;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Canvas;
+import org.eclipse.swt.widgets.Shell;
+import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** The merge columns and the merge window on real widgets. */
+class MergeWindowTest extends SwtTest {
+  private static final int ICON_SIZE = 14;
+
+  private Document result;
+  private MergeModel model;
+  private MergeColumns columns;
+
+  /** Builds the three columns with the model behind them, as the merge window does. */
+  private void columns(String yours, String base, String theirs) {
+    result = new Document(base);
+    DocumentResultText resultText = new DocumentResultText(result, () -> {
+      if (columns != null) {
+        columns.refresh();
+      }
+    });
+    model = MergeModel.create(DiffText.of(yours), DiffText.of(base), DiffText.of(theirs), IgnorePolicy.DEFAULT, resultText);
+    columns = new MergeColumns(shell, false, Path.of("a.txt"), new Document(yours), result, new Document(theirs), "Yours", "Theirs",
+                               new MergeColumns.Actions() {
+                                 @Override
+                                 public void replace(MergeChange change, Side side) {
+                                   model.replaceChange(change, side);
+                                   columns.refresh();
+                                 }
+
+                                 @Override
+                                 public void ignore(MergeChange change, Side side) {
+                                   model.ignoreChange(change, side);
+                                   columns.refresh();
+                                 }
+
+                                 @Override
+                                 public void magic(MergeChange change) {
+                                   model.resolveAutomatically(change);
+                                   columns.refresh();
+                                 }
+
+                                 @Override
+                                 public boolean key(int keyCode, int stateMask) {
+                                   return false;
+                                 }
+                               });
+    columns.setModel(model);
+    show();
+  }
+
+  /** Clicks the arrow (or the cross) of the block on a band, where the merge window paints it. */
+  private void clickBlockButton(MergeChange change, boolean leftBand, boolean cross) {
+    Canvas band = columns.divider(leftBand);
+    paint(band);
+    StyledText side = columns.text(leftBand ? ThreeSide.LEFT : ThreeSide.RIGHT);
+    int y = gitbench.ui.diff.DividerPainter.lineToY(side, change.startLine(leftBand ? ThreeSide.LEFT : ThreeSide.RIGHT), band)
+            + side.getLineHeight() / 2;
+    int width = band.getClientArea().width;
+    int x = leftBand ? (cross ? ICON_SIZE + 1 : 1) : (cross ? width - 2 * ICON_SIZE - 1 : width - ICON_SIZE - 1);
+    click(band, x + ICON_SIZE / 2, y);
+  }
+
+  @Test
+  void leftArrowPutsYoursIntoTheResult() {
+    columns("a\nX\nc\n", "a\nb\nc\n", "a\nY\nc\n");
+
+    clickBlockButton(model.changes().get(0), true, false);
+
+    assertThat(result.get()).isEqualTo("a\nX\nc\n");
+    assertThat(model.changes().get(0).isOnesideAppliedConflict()).isTrue();
+  }
+
+  @Test
+  void secondArrowOfAConflictAppendsTheOtherSide() {
+    columns("a\nX\nc\n", "a\nb\nc\n", "a\nY\nc\n");
+
+    clickBlockButton(model.changes().get(0), true, false);
+    clickBlockButton(model.changes().get(0), false, false);
+
+    assertThat(result.get()).isEqualTo("a\nX\nY\nc\n");
+    assertThat(model.isAllResolved()).isTrue();
+  }
+
+  @Test
+  void crossIgnoresTheSide() {
+    columns("a\nX\nc\n", "a\nb\nc\n", "a\nY\nc\n");
+
+    clickBlockButton(model.changes().get(0), true, true);
+
+    assertThat(result.get()).isEqualTo("a\nb\nc\n");
+    assertThat(model.changes().get(0).isResolved(Side.LEFT)).isTrue();
+  }
+
+  @Test
+  void typingAboveABlockKeepsItsButtonOnTheRightLines() throws Exception {
+    columns("a\nb\nc\nX\ne\n", "a\nb\nc\nd\ne\n", "a\nb\nc\nd\ne\n");
+
+    result.replace(1, 0, "\ntyped line");
+    pump();
+    clickBlockButton(model.changes().get(0), true, false);
+
+    assertThat(result.get()).isEqualTo("a\ntyped line\nb\nc\nX\ne\n");
+  }
+
+  // The merge window on a real conflict
+
+  private TempRepo repo;
+  private GitRepository repository;
+  private ConflictService service;
+
+  private MergeDialog openDialog(boolean[] saved) throws Exception {
+    repo = TempRepo.init();
+    repo.write("a.c", "base\n");
+    repo.commitAll("base");
+    repo.git("checkout", "-q", "-b", "feature");
+    repo.write("a.c", "theirs\n");
+    repo.commitAll("theirs");
+    repo.git("checkout", "-q", "main");
+    repo.write("a.c", "ours\n");
+    repo.commitAll("ours");
+    repo.gitMayFail("merge", "-q", "feature");
+    repository = new GitRepository(repo.root());
+    GitRunner runner = new GitRunner(() -> "git", GitCommandListener.NONE);
+    service = new ConflictService(runner);
+    ConflictFile file = service.list(repository).get(0);
+    MergeContext context = service.context(repository);
+    MergeContents contents = MergeContentLoader.load(runner, repository, file, context, StandardCharsets.UTF_8);
+    MergeDialog dialog = new MergeDialog(shell, repository, file, context, contents, StandardCharsets.UTF_8, service,
+                                         () -> saved[0] = true);
+    dialog.setBlockOnOpen(false);
+    dialog.open();
+    pump();
+    return dialog;
+  }
+
+  private void press(MergeDialog dialog, String text) {
+    Button button = find(dialog.getShell(), Button.class, text);
+    assertThat(button).as(text).isNotNull();
+    button.notifyListeners(SWT.Selection, new org.eclipse.swt.widgets.Event());
+    pump();
+  }
+
+  @Test
+  void acceptLeftSavesYoursAndResolvesTheFile() throws Exception {
+    boolean[] saved = {false};
+    MergeDialog dialog = openDialog(saved);
+
+    press(dialog, "Accept Left");
+
+    assertThat(Files.readString(repo.root().resolve("a.c"))).isEqualTo("ours\n");
+    assertThat(service.list(repository)).isEmpty();
+    assertThat(dialog.isResolved()).isTrue();
+    assertThat(saved[0]).isTrue();
+  }
+
+  @Test
+  void acceptRightSavesTheirs() throws Exception {
+    boolean[] saved = {false};
+    MergeDialog dialog = openDialog(saved);
+    Shell dialogShell = dialog.getShell();
+
+    press(dialog, "Accept Right");
+
+    assertThat(dialogShell.isDisposed()).isTrue();
+    assertThat(Files.readString(repo.root().resolve("a.c"))).isEqualTo("theirs\n");
+    assertThat(service.list(repository)).isEmpty();
+  }
+
+  @Test
+  void applyAfterTakingTheirsAndIgnoringYoursSavesTheResult() throws Exception {
+    boolean[] saved = {false};
+    MergeDialog dialog = openDialog(saved);
+    columns = dialog.columns();
+    model = dialog.model();
+    MergeChange conflict = model.changes().get(0);
+
+    clickBlockButton(conflict, false, false);
+    clickBlockButton(conflict, true, true);
+    assertThat(model.isAllResolved()).isTrue();
+    press(dialog, "Apply");
+
+    assertThat(Files.readString(repo.root().resolve("a.c"))).isEqualTo("theirs\n");
+    assertThat(service.list(repository)).isEmpty();
+    assertThat(saved[0]).isTrue();
+  }
+
+  @Test
+  void cancelWithAnUnchangedResultClosesWithoutSaving() throws Exception {
+    boolean[] saved = {false};
+    MergeDialog dialog = openDialog(saved);
+    Shell dialogShell = dialog.getShell();
+
+    press(dialog, "Cancel");
+
+    assertThat(dialogShell.isDisposed()).isTrue();
+    assertThat(saved[0]).isFalse();
+    assertThat(service.list(repository)).hasSize(1);
+  }
+}

@@ -108,6 +108,16 @@ final class MergeColumns {
     return control;
   }
 
+  /** The band between Yours and Result, or between Result and Theirs, for the UI tests. */
+  Canvas divider(boolean left) {
+    return left ? leftDivider : rightDivider;
+  }
+
+  /** The text widget of a column, for the UI tests. */
+  StyledText text(ThreeSide side) {
+    return viewer(side).getTextWidget();
+  }
+
   void setModel(MergeModel mergeModel) {
     model = mergeModel;
     refresh();

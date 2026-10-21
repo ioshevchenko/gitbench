@@ -21,15 +21,21 @@ public final class CdtHighlighting {
 
   /** Configures the viewer for the file. Returns true when a presentation reconciler now paints the text. */
   public static boolean configure(SourceViewer viewer, IDocument document, Path file) {
-    if (!isCSource(file) || Platform.getBundle("org.eclipse.cdt.ui") == null) {
+    if (!isCSource(file)) {
       return false;
     }
     try {
+      if (Platform.getBundle("org.eclipse.cdt.ui") == null) {
+        return false;
+      }
       CdtSupport.configure(viewer, document, file);
       return true;
     }
     catch (LinkageError | RuntimeException e) {
-      gitbench.ui.Activator.getDefault().getLog().warn("C highlighting is not available in the diff: " + e);
+      // Outside the running platform, as in the UI tests, there is no CDT and no log.
+      if (gitbench.ui.Activator.getDefault() != null) {
+        gitbench.ui.Activator.getDefault().getLog().warn("C highlighting is not available in the diff: " + e);
+      }
       return false;
     }
   }

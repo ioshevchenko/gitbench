@@ -14,12 +14,14 @@ def eclipseBundles = [
     'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.core.filebuffers_*', 'org.eclipse.cdt.ui_*', 'org.eclipse.cdt.core_*', 'org.osgi.service.prefs_*', 'org.eclipse.e4.ui.*'
 ]
 
+def eclipseJars = fileTree(dir: "${cubeIde}/plugins", includes: eclipseBundles.collect { ["${it}.jar", "${it}/**/*.jar"] }.flatten())
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    compileOnly fileTree(dir: "${cubeIde}/plugins", includes: eclipseBundles.collect { ["${it}.jar", "${it}/**/*.jar"] }.flatten())
+    compileOnly eclipseJars
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -130,5 +132,35 @@ tasks.named('shadowJar') {
 }
 
 tasks.named('test') {
+    dependsOn rasterizeIcons
+}
+
+// UI tests: real SWT widgets on the desktop, without a running Eclipse. They open windows for a moment, so they run
+// apart from "test": ./gradlew uiTest
+sourceSets {
+    uiTest {
+        java.srcDir 'src/uiTest/java'
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
+}
+
+configurations {
+    uiTestImplementation.extendsFrom implementation, testImplementation
+    uiTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+dependencies {
+    uiTestImplementation eclipseJars
+}
+
+tasks.register('uiTest', Test) {
+    group = 'verification'
+    description = 'Runs the SWT UI tests of the diff and merge windows.'
+    testClassesDirs = sourceSets.uiTest.output.classesDirs
+    classpath = sourceSets.uiTest.runtimeClasspath
+    useJUnitPlatform()
+    maxParallelForks = 1
+    systemProperty 'gitbench.iconsDir', layout.buildDirectory.dir('generated/icons/png').get().asFile.absolutePath
     dependsOn rasterizeIcons
 }

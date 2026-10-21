@@ -45,7 +45,13 @@ public final class GitbenchIcons {
     }
   }
 
+  /** Icons loaded outside the running plugin, for the UI tests; see {@link #get}. */
+  private static final java.util.Map<String, Image> STANDALONE = new java.util.HashMap<>();
+
   public static Image get(Icon icon) {
+    if (Activator.getDefault() == null) {
+      return standalone(icon);
+    }
     ImageRegistry registry = Activator.getDefault().getImageRegistry();
     String key = (Theme.isDark() ? "dark/" : "light/") + icon.name();
     Image image = registry.get(key);
@@ -54,5 +60,17 @@ public final class GitbenchIcons {
       image = registry.get(key);
     }
     return image;
+  }
+
+  /**
+   * Without the plugin, as in the UI tests, the icons come from the folder in the system property
+   * {@code gitbench.iconsDir}, the rasterized PNG files of the build.
+   */
+  private static Image standalone(Icon icon) {
+    return STANDALONE.computeIfAbsent(icon.name(), name -> {
+      java.nio.file.Path png = java.nio.file.Path.of(System.getProperty("gitbench.iconsDir", "build/generated/icons/png"), "light",
+                                                     icon.fileName() + ".png");
+      return ImageDescriptor.createFromFile(null, png.toString()).createImage(false, org.eclipse.swt.widgets.Display.getDefault());
+    });
   }
 }
