@@ -87,6 +87,12 @@ public final class TempRepo {
     runGit(root, null, java.util.Map.of("GIT_AUTHOR_DATE", date, "GIT_COMMITTER_DATE", date), "commit", "-q", "-m", msg);
   }
 
+  /** Runs git with fixed author and committer dates, in seconds since the epoch. */
+  public String gitAt(long epochSeconds, String... args) {
+    String date = "@" + epochSeconds + " +0000";
+    return runGit(root, null, java.util.Map.of("GIT_AUTHOR_DATE", date, "GIT_COMMITTER_DATE", date), args);
+  }
+
   /** Merges {@code branch} into the current branch with a fixed date. */
   public void mergeAt(String branch, long epochSeconds) {
     String date = "@" + epochSeconds + " +0000";
