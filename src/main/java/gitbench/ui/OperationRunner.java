@@ -61,12 +61,18 @@ public final class OperationRunner {
       catch (GitException e) {
         result = OperationResult.failure(e.userMessage());
       }
-      WorkspaceSync.refresh(repository);
-      RepositoryEvents.fire(repository);
       OperationResult finalResult = result;
-      if (!display.isDisposed()) {
-        display.asyncExec(() -> show(site, title, finalResult, onSuccess));
-      }
+      // refreshLocal begins a resource rule, and the repository rule does not contain it: refresh in a job without a rule.
+      Job refresh = Job.create(title + ": refresh", refreshMonitor -> {
+        WorkspaceSync.refresh(repository);
+        RepositoryEvents.fire(repository);
+        if (!display.isDisposed()) {
+          display.asyncExec(() -> show(site, title, finalResult, onSuccess));
+        }
+        return Status.OK_STATUS;
+      });
+      refresh.setSystem(true);
+      refresh.schedule();
       return Status.OK_STATUS;
     });
     job.setRule(new RepositoryRule(repository));
