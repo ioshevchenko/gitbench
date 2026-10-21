@@ -187,6 +187,10 @@ public final class BranchesView extends ViewPart {
       catch (GitException e) {
         asyncExec(() -> setContentDescription(e.userMessage()));
       }
+      catch (RuntimeException e) {
+        Activator.getDefault().getLog().error("Cannot load branches", e);
+        asyncExec(() -> setContentDescription("Cannot load branches: " + e));
+      }
       return Status.OK_STATUS;
     });
     job.setSystem(true);
@@ -203,8 +207,17 @@ public final class BranchesView extends ViewPart {
     }
     List<BranchTreeNode> nodes = BranchTreeBuilder.build(refs, favorites(repository.get()).all(), counts, search.getText(),
                                                         store().getBoolean(PREF_ONLY_MINE), myBranches);
-    tree.setNodes(nodes);
+    // Restoring the selection fires a selection event; it must not apply the filter to the Git Log again.
+    rebuilding = true;
+    try {
+      tree.setNodes(nodes);
+    }
+    finally {
+      rebuilding = false;
+    }
   }
+
+  private boolean rebuilding;
 
   Favorites favorites(GitRepository repository) {
     IPreferenceStore store = store();
@@ -217,6 +230,9 @@ public final class BranchesView extends ViewPart {
 
   /** Filters the Git Log by the selected branches, or moves the log to the branch head, by the Settings choice. */
   private void onSelection() {
+    if (rebuilding) {
+      return;
+    }
     List<GitRef> selected = selectedRefs();
     if (selected.isEmpty()) {
       return;

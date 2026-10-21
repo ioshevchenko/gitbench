@@ -122,13 +122,32 @@ final class BranchActions {
     if (ref.current() || ref.type() == RefType.HEAD) {
       return;
     }
-    view.currentRepository().ifPresent(repo -> run("Checkout", () -> operations().checkout(repo, ref)));
+    view.currentRepository().ifPresent(repo -> run("Checkout", () -> {
+      OperationResult result = operations().checkout(repo, ref);
+      if (!result.needsForce()) {
+        return result;
+      }
+      // The local branch has its own commits: ask as IntelliJ does.
+      int[] choice = {2};
+      view.getSite().getShell().getDisplay().syncExec(() -> {
+        if (!view.getSite().getShell().isDisposed()) {
+          choice[0] = new MessageDialog(view.getSite().getShell(), "Checkout", null,
+                                        result.message() + "\nRebase them onto " + ref.name() + ", or drop them?",
+                                        MessageDialog.QUESTION, 0, "Checkout and Rebase", "Drop Local Commits", "Cancel").open();
+        }
+      });
+      return switch (choice[0]) {
+        case 0 -> operations().checkoutRemote(repo, ref, BranchOperations.LocalCommits.REBASE);
+        case 1 -> operations().checkoutRemote(repo, ref, BranchOperations.LocalCommits.DROP);
+        default -> OperationResult.success("");
+      };
+    }));
   }
 
   private void checkoutAndRebase(GitRef ref, String current) {
     view.currentRepository().ifPresent(repo -> run("Checkout and Rebase", () -> {
       OperationResult checkout = operations().checkout(repo, ref);
-      return checkout.ok() ? operations().rebaseCurrentOnto(repo, current) : checkout;
+      return checkout.ok() ? operations().rebaseCurrentOnto(repo, "refs/heads/" + current) : checkout;
     }));
   }
 
@@ -153,7 +172,7 @@ final class BranchActions {
     try {
       IViewPart part = view.getSite().getPage().showView(GitLogView.ID);
       if (part instanceof GitLogView log) {
-        log.showRange(current.get().name(), ref.name());
+        log.showRange(current.get().fullName(), ref.fullName());
       }
     }
     catch (PartInitException e) {
@@ -162,11 +181,11 @@ final class BranchActions {
   }
 
   private void rebaseOnto(GitRef ref) {
-    view.currentRepository().ifPresent(repo -> run("Rebase", () -> operations().rebaseCurrentOnto(repo, ref.name())));
+    view.currentRepository().ifPresent(repo -> run("Rebase", () -> operations().rebaseCurrentOnto(repo, ref.fullName())));
   }
 
   private void merge(GitRef ref) {
-    view.currentRepository().ifPresent(repo -> run("Merge", () -> operations().mergeIntoCurrent(repo, ref.name())));
+    view.currentRepository().ifPresent(repo -> run("Merge", () -> operations().mergeIntoCurrent(repo, ref.fullName())));
   }
 
   private void update(GitRef ref) {
@@ -198,20 +217,27 @@ final class BranchActions {
                                              "Delete " + names + " on the remote?")) {
       return;
     }
-    view.currentRepository().ifPresent(repo -> {
+    // One job deletes the branches one after another and stops at the first failure.
+    view.currentRepository().ifPresent(repo -> OperationRunner.run(view.getSite(), repo, "Delete", () -> {
+      OperationResult last = OperationResult.success("");
       for (GitRef ref : deletable) {
-        OperationRunner.run(view.getSite(), repo, "Delete", () -> {
-          OperationResult result = operations().delete(repo, ref, false);
-          if (result.needsForce()) {
-            boolean[] force = {false};
-            view.getSite().getShell().getDisplay().syncExec(() -> force[0] = MessageDialog.openQuestion(
-              view.getSite().getShell(), "Delete Branch", result.message() + " Delete anyway?"));
-            return force[0] ? operations().delete(repo, ref, true) : OperationResult.success("");
-          }
-          return result;
-        });
+        last = operations().delete(repo, ref, false);
+        if (last.needsForce()) {
+          String question = last.message() + " Delete anyway?";
+          boolean[] force = {false};
+          view.getSite().getShell().getDisplay().syncExec(() -> {
+            if (!view.getSite().getShell().isDisposed()) {
+              force[0] = MessageDialog.openQuestion(view.getSite().getShell(), "Delete Branch", question);
+            }
+          });
+          last = force[0] ? operations().delete(repo, ref, true) : OperationResult.success("");
+        }
+        if (!last.ok()) {
+          return last;
+        }
       }
-    });
+      return last;
+    }));
   }
 
   /** Opens the Push dialog for a local branch and pushes it, as Push... in the IntelliJ branch menu. */
