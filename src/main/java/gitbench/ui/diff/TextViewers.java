@@ -23,7 +23,7 @@ public final class TextViewers {
   private TextViewers() {
   }
 
-  /** A source viewer with line numbers and the editor text font. {@link CdtHighlighting} adds the syntax colors. */
+  /** A source viewer with line numbers and the editor text font. {@link Highlighting} adds the syntax colors. */
   public static SourceViewer create(Composite parent, boolean dark, IDocument document, boolean editable) {
     CompositeRuler ruler = new CompositeRuler();
     LineNumberRulerColumn numbers = new LineNumberRulerColumn();

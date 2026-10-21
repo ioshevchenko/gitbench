@@ -8,7 +8,7 @@ import gitbench.merge.MergeChange;
 import gitbench.merge.MergeModel;
 import gitbench.ui.GitbenchIcons;
 import gitbench.ui.GitbenchIcons.Icon;
-import gitbench.ui.diff.CdtHighlighting;
+import gitbench.ui.diff.Highlighting;
 import gitbench.ui.diff.DiffColors;
 import gitbench.ui.diff.DividerPainter;
 import gitbench.ui.diff.TextViewers;
@@ -89,9 +89,9 @@ final class MergeColumns {
     result = TextViewers.create(control, dark, resultDocument, true);
     rightDivider = new Canvas(control, SWT.DOUBLE_BUFFERED);
     theirs = TextViewers.create(control, dark, theirsDocument, false);
-    CdtHighlighting.configure(yours, yoursDocument, file);
-    CdtHighlighting.configure(result, resultDocument, file);
-    CdtHighlighting.configure(theirs, theirsDocument, file);
+    Highlighting.configure(yours, yoursDocument, file);
+    Highlighting.configure(result, resultDocument, file);
+    Highlighting.configure(theirs, theirsDocument, file);
     control.setLayout(new ColumnsLayout());
 
     install(yours, ThreeSide.LEFT);

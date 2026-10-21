@@ -56,7 +56,7 @@ final class OnesideViewer implements DiffPane {
     StyledText text = viewer.getTextWidget();
     text.setFont(JFaceResources.getTextFont());
     TextViewers.followEditorBackground(viewer, ruler, numbers);
-    CdtHighlighting.configure(viewer, document, initial.file());
+    Highlighting.configure(viewer, document, initial.file());
     text.addLineBackgroundListener(e -> e.lineBackground = DiffColors.color(added ? BlockKind.INSERTED : BlockKind.DELETED, dark));
     viewer.prependVerifyKeyListener(e -> {
       if (host.handleKey(e.keyCode, e.stateMask)) {

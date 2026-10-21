@@ -4,24 +4,47 @@ plugins {
     id 'com.gradleup.shadow' version '8.3.6'
 }
 
-def cubeIde = file(property('cubeIdeHome'))
-def eclipseBundles = [
-    'org.eclipse.swt_*', 'org.eclipse.swt.win32*', 'org.eclipse.jface_*', 'org.eclipse.jface.text_*',
-    'org.eclipse.ui_*', 'org.eclipse.ui.workbench_*', 'org.eclipse.ui.ide_*', 'org.eclipse.ui.console_*',
-    'org.eclipse.ui.editors_*', 'org.eclipse.ui.workbench.texteditor_*', 'org.eclipse.text_*',
-    'org.eclipse.core.runtime_*', 'org.eclipse.core.filesystem_*', 'org.eclipse.core.resources_*', 'org.eclipse.core.jobs_*',
-    'org.eclipse.core.commands_*', 'org.eclipse.equinox.common_*', 'org.eclipse.equinox.preferences_*',
-    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.core.filebuffers_*', 'org.eclipse.cdt.ui_*', 'org.eclipse.cdt.core_*', 'org.osgi.service.prefs_*', 'org.eclipse.e4.ui.*'
-]
+// The folder of an STM32CubeIDE or Eclipse installation, only for deployDropins and a local update site:
+// -PcubeIdeHome=... or cubeIdeHome=... in ~/.gradle/gradle.properties.
+def cubeIdeHome = findProperty('cubeIdeHome')
 
-def eclipseJars = fileTree(dir: "${cubeIde}/plugins", includes: eclipseBundles.collect { ["${it}.jar", "${it}/**/*.jar"] }.flatten())
+// The Eclipse API the plugin compiles against: Eclipse 4.33 (STM32CubeIDE 2.0.0), the oldest supported platform.
+// The artifacts of one Eclipse release depend on each other with exact versions, so these few pin the whole set.
+def os = org.gradle.internal.os.OperatingSystem.current()
+def arch = System.getProperty('os.arch')
+def swtFragment = os.windows ? 'org.eclipse.swt.win32.win32.x86_64'
+        : os.macOsX ? (arch == 'aarch64' ? 'org.eclipse.swt.cocoa.macosx.aarch64' : 'org.eclipse.swt.cocoa.macosx.x86_64')
+        : 'org.eclipse.swt.gtk.linux.x86_64'
+def eclipsePlatform = [
+    'org.eclipse.platform:org.eclipse.ui.ide:3.22.300',
+    'org.eclipse.platform:org.eclipse.ui.editors:3.18.0',
+    'org.eclipse.platform:org.eclipse.ui.workbench.texteditor:3.18.0',
+    'org.eclipse.platform:org.eclipse.ui.console:3.14.100',
+    'org.eclipse.platform:org.eclipse.core.filebuffers:3.8.300',
+    "org.eclipse.platform:${swtFragment}:3.127.0",
+]
 
 repositories {
     mavenCentral()
+    // CDT is not on Maven Central. Its p2 repository serves plugin jars by name; the UI tests check the reflective
+    // CDT calls of the plugin against CDT 11.6.0, the CDT of Eclipse 4.33.
+    ivy {
+        name = 'cdtP2'
+        url = 'https://download.eclipse.org/tools/cdt/releases/11.6/cdt-11.6.0/plugins'
+        patternLayout { artifact '[module]_[revision].[ext]' }
+        metadataSources { artifact() }
+        content { includeGroup 'cdt.p2' }
+    }
+}
+
+// org.eclipse.swt names its native fragment through an OSGi property that Maven cannot resolve; the fragment for
+// this OS is a direct dependency instead.
+configurations.configureEach {
+    exclude group: 'org.eclipse.platform', module: 'org.eclipse.swt'
 }
 
 dependencies {
-    compileOnly eclipseJars
+    eclipsePlatform.each { compileOnly it }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -105,10 +128,13 @@ test {
 
 tasks.register('deployDropins') {
     group = 'gitbench'
-    description = 'Copies the plugin jar into the dropins folder of the configured CubeIDE.'
+    description = 'Copies the plugin jar into the dropins folder of the IDE in cubeIdeHome.'
     dependsOn 'shadowJar'
     doLast {
-        def dropins = new File(cubeIde, 'dropins')
+        if (cubeIdeHome == null) {
+            throw new GradleException('Set the IDE folder: -PcubeIdeHome=<folder with plugins and dropins>, or cubeIdeHome=... in ~/.gradle/gradle.properties')
+        }
+        def dropins = new File(cubeIdeHome, 'dropins')
         dropins.mkdirs()
         dropins.listFiles({ File f -> f.name.startsWith('gitbench_') && f.name.endsWith('.jar') } as FileFilter)?.each { it.delete() }
         copy {
@@ -146,12 +172,27 @@ sourceSets {
 }
 
 configurations {
+    cdtCheck
     uiTestImplementation.extendsFrom implementation, testImplementation
     uiTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
+// The UI tests run on unsigned copies of the Eclipse jars; see buildSrc UnsignJar.
+def unsigned = Attribute.of('gitbench.unsigned', Boolean)
 dependencies {
-    uiTestImplementation eclipseJars
+    attributesSchema { attribute(unsigned) }
+    artifactTypes.getByName('jar') { attributes.attribute(unsigned, false) }
+    registerTransform(gitbench.build.UnsignJar) {
+        from.attribute(unsigned, false)
+        to.attribute(unsigned, true)
+    }
+}
+configurations.uiTestRuntimeClasspath { attributes.attribute(unsigned, true) }
+
+dependencies {
+    eclipsePlatform.each { uiTestImplementation it }
+    cdtCheck 'cdt.p2:org.eclipse.cdt.ui:8.1.500.202405311716@jar'
+    cdtCheck 'cdt.p2:org.eclipse.cdt.core:8.4.200.202405291253@jar'
 }
 
 tasks.register('uiTest', Test) {
@@ -162,5 +203,8 @@ tasks.register('uiTest', Test) {
     useJUnitPlatform()
     maxParallelForks = 1
     systemProperty 'gitbench.iconsDir', layout.buildDirectory.dir('generated/icons/png').get().asFile.absolutePath
+    def cdtJars = configurations.cdtCheck
+    inputs.files(cdtJars)
+    doFirst { systemProperty 'gitbench.cdtJars', cdtJars.asPath }
     dependsOn rasterizeIcons
 }
