@@ -174,6 +174,14 @@ public final class CommitView extends ViewPart {
     super.dispose();
   }
 
+  /** Puts a message into an empty message field, as IntelliJ does after Undo Commit. */
+  public void offerMessage(String message) {
+    if (panel.message().isBlank() && message != null) {
+      panel.setMessage(message);
+      panel.focusMessage();
+    }
+  }
+
   /** Reads the status again in the background and updates the view. */
   public void refresh() {
     if (refreshJob != null) {

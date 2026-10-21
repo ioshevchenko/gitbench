@@ -126,6 +126,15 @@ class LogModelTest {
   }
 
   @Test
+  void parentsAndChildren() throws Exception {
+    TempRepo repo = mergeRepo();
+    LogModel model = model(repo, true);
+    assertThat(model.parentsOf(rev(repo, "HEAD"))).containsExactly(rev(repo, "HEAD^1"), rev(repo, "HEAD^2"));
+    assertThat(model.childrenOf(rev(repo, "HEAD~2"))).containsExactlyInAnyOrder(rev(repo, "HEAD^1"), rev(repo, "feature"));
+    assertThat(model.childrenOf(rev(repo, "HEAD"))).isEmpty();
+  }
+
+  @Test
   void rowOfUnknownHashIsMinusOne() throws Exception {
     assertThat(model(mergeRepo(), true).rowOf("0000000000000000000000000000000000000000")).isEqualTo(-1);
   }

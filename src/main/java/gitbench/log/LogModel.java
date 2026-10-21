@@ -121,6 +121,35 @@ public final class LogModel {
     return currentBranchCondition.test(commitIndex);
   }
 
+  /** The parents of the commit, first parent first. */
+  public List<String> parentsOf(String hash) {
+    int index = topology.index().indexOf(hash);
+    if (index < 0) {
+      return List.of();
+    }
+    for (com.intellij.vcs.log.graph.GraphCommit<Integer> commit : topology.commits()) {
+      if (commit.getId() == index) {
+        return commit.getParents().stream().map(topology.index()::hashOf).toList();
+      }
+    }
+    return List.of();
+  }
+
+  /** The commits that have this commit as a parent. */
+  public List<String> childrenOf(String hash) {
+    int index = topology.index().indexOf(hash);
+    if (index < 0) {
+      return List.of();
+    }
+    List<String> children = new ArrayList<>();
+    for (com.intellij.vcs.log.graph.GraphCommit<Integer> commit : topology.commits()) {
+      if (commit.getParents().contains(index)) {
+        children.add(topology.index().hashOf(commit.getId()));
+      }
+    }
+    return children;
+  }
+
   /** The number of graph columns IntelliJ suggests for this graph. */
   public int recommendedWidth() {
     return visible == null ? 0 : visible.getRecommendedWidth();
