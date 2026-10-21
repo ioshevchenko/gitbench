@@ -55,6 +55,7 @@ import java.util.List;
  */
 public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffToolbar.Actions {
   public static final String ID = "gitbench.editors.diff";
+  public static final String CONTEXT_ID = "gitbench.contexts.diff";
   /** The pause after typing before the diff is computed again, so typing does not compare on every key. */
   private static final int REDIFF_DELAY_MS = 300;
 
@@ -131,6 +132,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     body.setLayout(bodyLayout);
     message = new Label(body, SWT.CENTER);
     installGlobalActions();
+    // The key bindings of the diff commands (F7, Alt+Shift+Left/Right, Ctrl+Alt+R) work only in this context.
+    getSite().getService(org.eclipse.ui.contexts.IContextService.class).activateContext(CONTEXT_ID);
     load();
   }
 
@@ -458,13 +461,18 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       return true;
     }
     if ((keyCode == 'r' || keyCode == 'R') && modifiers == (SWT.CTRL | SWT.ALT)) {
-      DiffChange change = pane != null ? pane.changeAtCaret() : null;
-      if (change != null) {
-        apply(change, false);
-      }
+      applyAtCaret();
       return true;
     }
     return false;
+  }
+
+  /** Ctrl+Alt+R: copies the block under the caret to the right side, as IntelliJ Diff.ApplyLeftSide. */
+  public void applyAtCaret() {
+    DiffChange change = pane != null ? pane.changeAtCaret() : null;
+    if (change != null) {
+      apply(change, false);
+    }
   }
 
   @Override

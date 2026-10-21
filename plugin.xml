@@ -26,6 +26,68 @@
             class="gitbench.ui.diff.DiffEditor"
             default="false"/>
    </extension>
+   <extension point="org.eclipse.ui.contexts">
+      <context id="gitbench.contexts.diff"
+            name="Gitbench Diff"
+            parentId="org.eclipse.ui.contexts.window"/>
+   </extension>
+   <extension point="org.eclipse.ui.commands">
+      <category id="gitbench.commands" name="Gitbench"/>
+      <command id="gitbench.diff.nextDifference" name="Next Difference" categoryId="gitbench.commands"/>
+      <command id="gitbench.diff.previousDifference" name="Previous Difference" categoryId="gitbench.commands"/>
+      <command id="gitbench.diff.nextFile" name="Compare Next File" categoryId="gitbench.commands"/>
+      <command id="gitbench.diff.previousFile" name="Compare Previous File" categoryId="gitbench.commands"/>
+      <command id="gitbench.diff.applyLeftSide" name="Revert or Accept Block" categoryId="gitbench.commands"/>
+   </extension>
+   <extension point="org.eclipse.ui.handlers">
+      <handler commandId="gitbench.diff.nextDifference" class="gitbench.ui.diff.DiffCommandHandler">
+         <activeWhen>
+            <with variable="activePartId">
+               <equals value="gitbench.editors.diff"/>
+            </with>
+         </activeWhen>
+      </handler>
+      <handler commandId="gitbench.diff.previousDifference" class="gitbench.ui.diff.DiffCommandHandler">
+         <activeWhen>
+            <with variable="activePartId">
+               <equals value="gitbench.editors.diff"/>
+            </with>
+         </activeWhen>
+      </handler>
+      <handler commandId="gitbench.diff.nextFile" class="gitbench.ui.diff.DiffCommandHandler">
+         <activeWhen>
+            <with variable="activePartId">
+               <equals value="gitbench.editors.diff"/>
+            </with>
+         </activeWhen>
+      </handler>
+      <handler commandId="gitbench.diff.previousFile" class="gitbench.ui.diff.DiffCommandHandler">
+         <activeWhen>
+            <with variable="activePartId">
+               <equals value="gitbench.editors.diff"/>
+            </with>
+         </activeWhen>
+      </handler>
+      <handler commandId="gitbench.diff.applyLeftSide" class="gitbench.ui.diff.DiffCommandHandler">
+         <activeWhen>
+            <with variable="activePartId">
+               <equals value="gitbench.editors.diff"/>
+            </with>
+         </activeWhen>
+      </handler>
+   </extension>
+   <extension point="org.eclipse.ui.bindings">
+      <key commandId="gitbench.diff.nextDifference" contextId="gitbench.contexts.diff"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="F7"/>
+      <key commandId="gitbench.diff.previousDifference" contextId="gitbench.contexts.diff"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="SHIFT+F7"/>
+      <key commandId="gitbench.diff.nextFile" contextId="gitbench.contexts.diff"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="ALT+SHIFT+ARROW_RIGHT"/>
+      <key commandId="gitbench.diff.previousFile" contextId="gitbench.contexts.diff"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="ALT+SHIFT+ARROW_LEFT"/>
+      <key commandId="gitbench.diff.applyLeftSide" contextId="gitbench.contexts.diff"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration" sequence="M1+ALT+R"/>
+   </extension>
    <extension point="org.eclipse.ui.preferencePages">
       <page id="gitbench.preferences"
             name="Gitbench"
