@@ -103,6 +103,7 @@ public final class BranchesPanel {
     contentLayout.marginWidth = 0;
     contentLayout.marginHeight = 0;
     content.setLayout(contentLayout);
+    gitbench.ui.Separators.leftLine(content);
     search = new Text(content, SWT.SEARCH | SWT.ICON_SEARCH | SWT.ICON_CANCEL);
     search.setMessage("Branch or tag");
     search.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));

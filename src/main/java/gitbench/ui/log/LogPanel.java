@@ -165,6 +165,7 @@ public final class LogPanel {
 
     mainSash = new SashForm(root, SWT.HORIZONTAL);
     mainSash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+    gitbench.ui.Separators.onePixel(mainSash);
     table = new CommitTable(mainSash, new CommitTable.DetailsSource() {
       @Override
       public CommitDetails get(String hash) {
@@ -177,6 +178,7 @@ public final class LogPanel {
       }
     }, () -> myEmail);
     rightSide = new SashForm(mainSash, SWT.VERTICAL);
+    gitbench.ui.Separators.onePixel(rightSide);
     files = new CommitFilesTree(rightSide);
     files.viewer().addDoubleClickListener(e -> {
       if (files.onlyFilesSelected()) {

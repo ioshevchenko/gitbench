@@ -41,6 +41,7 @@ public final class ExpandableSplit {
     controls.setLayoutData(new GridData(SWT.FILL, SWT.FILL, false, true));
     sash = new SashForm(root, SWT.HORIZONTAL);
     sash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+    Separators.onePixel(sash);
     strip = new ToolBar(controls, SWT.VERTICAL | SWT.FLAT);
     org.eclipse.swt.widgets.ToolItem expand = new org.eclipse.swt.widgets.ToolItem(strip, SWT.PUSH);
     expand.setImage(GitbenchIcons.get(expandIcon));
