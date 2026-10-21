@@ -216,4 +216,54 @@ class MergeModelTest {
 
     assertThat(result.text()).isEqualTo("int a;");
   }
+
+  @Test
+  void deletedBlockErasedByHandIsResolved() {
+    MergeModel model = model("a\nc\n", "a\nb\nc\n", "a\nb\nc\n");
+    MergeChange deleted = model.changes().get(0);
+    assertThat(deleted.isResolved()).isFalse();
+
+    result.type(1, 0, 2, "");
+
+    assertThat(result.text()).isEqualTo("a\nc\n");
+    assertThat(deleted.isResolved()).isTrue();
+  }
+
+  @Test
+  void undoRestoresTextAndBlockStates() {
+    MergeModel model = model("a\nX\nc\n", "a\nb\nc\n", "a\nY\nc\n");
+    MergeChange conflict = model.changes().get(0);
+    MergeModel.Snapshot before = model.snapshot();
+
+    model.replaceChange(conflict, Side.LEFT);
+    model.restore(before);
+
+    assertThat(result.text()).isEqualTo("a\nb\nc\n");
+    assertThat(conflict.isResolved(Side.LEFT)).isFalse();
+    assertThat(conflict.isOnesideAppliedConflict()).isFalse();
+    assertThat(conflict.startLine(ThreeSide.BASE)).isEqualTo(1);
+    assertThat(conflict.endLine(ThreeSide.BASE)).isEqualTo(2);
+  }
+
+  @Test
+  void conflictHasChangedWordsOnEachSide() {
+    MergeModel model = model("int a = 1;\n", "int a = 0;\n", "int a = 2;\n");
+
+    MergeModel.InnerDifferences inner = model.innerDifferences(model.changes().get(0));
+
+    assertThat(inner.left()).containsExactly(new gitbench.diff.InnerRange(0, 8, 9));
+    assertThat(inner.base()).containsExactly(new gitbench.diff.InnerRange(0, 8, 9), new gitbench.diff.InnerRange(0, 8, 9));
+    assertThat(inner.right()).containsExactly(new gitbench.diff.InnerRange(0, 8, 9));
+  }
+
+  @Test
+  void oneSidedChangeHasWordsAgainstTheResult() {
+    MergeModel model = model("a\nint x = 1;\nc\n", "a\nint x = 0;\nc\n", "a\nint x = 0;\nc\n");
+
+    MergeModel.InnerDifferences inner = model.innerDifferences(model.changes().get(0));
+
+    assertThat(inner.left()).containsExactly(new gitbench.diff.InnerRange(1, 8, 9));
+    assertThat(inner.base()).containsExactly(new gitbench.diff.InnerRange(1, 8, 9));
+    assertThat(inner.right()).isEmpty();
+  }
 }

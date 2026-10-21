@@ -19,6 +19,9 @@ public final class MergeChange {
   private boolean onesideAppliedConflict;
   int resultStart;
   int resultEnd;
+  /** The cache of MergeModel.isRangeModified: the Result version it was computed for, and the answer. */
+  long modifiedVersion = -1;
+  boolean modified;
 
   MergeChange(int index, MergeLineFragment fragment, MergeConflictType type, MergeModel model) {
     this.index = index;
@@ -87,6 +90,10 @@ public final class MergeChange {
 
   void markOnesideAppliedConflict() {
     onesideAppliedConflict = true;
+  }
+
+  void setOnesideAppliedConflict(boolean value) {
+    onesideAppliedConflict = value;
   }
 
   /** The magic button applies to this block, as MergeConflictModel.canResolveChangeAutomatically(BASE). */
