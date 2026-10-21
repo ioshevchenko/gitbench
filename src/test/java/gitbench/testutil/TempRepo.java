@@ -85,7 +85,16 @@ public final class TempRepo {
     return runGit(root, args);
   }
 
+  /** Runs git with {@code input} on stdin, for example {@code fast-import}. */
+  public String gitWithInput(byte[] input, String... args) {
+    return runGit(root, input, args);
+  }
+
   public static String runGit(Path dir, String... args) {
+    return runGit(dir, null, args);
+  }
+
+  private static String runGit(Path dir, byte[] input, String... args) {
     List<String> command = new ArrayList<>();
     command.add("git");
     command.add("-c");
@@ -93,6 +102,11 @@ public final class TempRepo {
     command.addAll(List.of(args));
     try {
       Process process = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true).start();
+      try (var stdin = process.getOutputStream()) {
+        if (input != null) {
+          stdin.write(input);
+        }
+      }
       String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
       int code = process.waitFor();
       if (code != 0) {
