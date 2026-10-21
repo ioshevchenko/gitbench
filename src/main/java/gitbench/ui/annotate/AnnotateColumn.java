@@ -76,12 +76,18 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   private ITextViewer viewer;
   private ViewerGeometry geometry;
   private Canvas canvas;
+  /** Kept apart from the canvas: a blame may end after the canvas is disposed. */
+  private org.eclipse.swt.widgets.Display display;
   private AnnotatePainter painter;
   private IDocument document;
   private Path file;
   private Charset charset;
-  /** Found on the blame thread; read by the repository listener. */
+  /** The repository and the path of the file, looked up once per input on the blame thread. */
   private volatile LineStatusBase.Key key;
+  private volatile boolean keySearched;
+  /** The first and the last line of the text that the current change replaces. */
+  private int editStart;
+  private int editOldEnd;
   private Blame blame;
   private Map<String, Integer> colors = Map.of();
   private int width;
@@ -91,18 +97,29 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   private final IDocumentListener documentListener = new IDocumentListener() {
     @Override
     public void documentAboutToBeChanged(DocumentEvent event) {
+      editStart = lineOf(event.getOffset());
+      editOldEnd = lineOf(event.getOffset() + event.getLength());
     }
 
     @Override
     public void documentChanged(DocumentEvent event) {
-      generation++;
-      canvas.getDisplay().timerExec(BLAME_DELAY_MS, blameLater);
+      int newEnd = lineOf(event.getOffset() + (event.getText() == null ? 0 : event.getText().length()));
+      if (org.eclipse.swt.widgets.Display.getCurrent() == display) {
+        edited(editStart, editOldEnd, newEnd);
+      }
+      else {
+        // A change on another thread: the state belongs to the UI thread, so the old blame goes until the next one.
+        onUiThread(() -> {
+          blame = null;
+          edited(0, 0, 0);
+        });
+      }
     }
   };
   private final Consumer<GitRepository> repositoryListener = repository -> {
     LineStatusBase.Key current = key;
     if (current != null && current.repository().equals(repository) && canvas != null && !canvas.isDisposed()) {
-      canvas.getDisplay().asyncExec(this::reblame);
+      onUiThread(this::reblame);
     }
   };
   private final IViewportListener viewportListener = verticalOffset -> redraw();
@@ -126,6 +143,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   @Override
   public Control createControl(CompositeRuler parentRuler, Composite parentControl) {
     ruler = parentRuler;
+    display = parentControl.getDisplay();
     viewer = parentRuler.getTextViewer();
     geometry = new ViewerGeometry(viewer);
     painter = new AnnotatePainter(viewer.getTextWidget().getFont());
@@ -137,18 +155,73 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     canvas.addListener(SWT.Dispose, e -> dispose());
     viewer.addViewportListener(viewportListener);
     viewer.addTextListener(textListener);
+    RepositoryEvents.listen(repositoryListener);
+    bind();
+    return canvas;
+  }
+
+  /** Follows the current file and document of the editor; a file that is not on disk gets no blame. */
+  private void bind() {
     ITextEditor editor = getEditor();
-    Optional<Path> path = editor == null ? Optional.empty() : EditorFiles.file(editor.getEditorInput());
-    Optional<IDocument> found = editor == null ? Optional.empty() : EditorFiles.document(editor);
-    if (path.isPresent() && found.isPresent()) {
-      file = path.get();
-      document = found.get();
-      charset = EditorFiles.charset(editor);
+    file = editor == null ? null : EditorFiles.file(editor.getEditorInput()).orElse(null);
+    document = editor == null ? null : EditorFiles.document(editor).orElse(null);
+    charset = editor == null ? null : EditorFiles.charset(editor);
+    key = null;
+    keySearched = false;
+    blame = null;
+    colors = Map.of();
+    if (file != null && document != null) {
       document.addDocumentListener(documentListener);
-      RepositoryEvents.listen(repositoryListener);
       reblame();
     }
-    return canvas;
+  }
+
+  /** Eclipse keeps the columns when the editor input changes and only sets the model again. */
+  private void rebindIfInputChanged() {
+    ITextEditor editor = getEditor();
+    if (disposed || editor == null) {
+      return;
+    }
+    Path newFile = EditorFiles.file(editor.getEditorInput()).orElse(null);
+    IDocument newDocument = EditorFiles.document(editor).orElse(null);
+    if (java.util.Objects.equals(newFile, file) && newDocument == document) {
+      return;
+    }
+    if (document != null) {
+      document.removeDocumentListener(documentListener);
+    }
+    generation++;
+    bind();
+    redraw();
+  }
+
+  /** Moves the blame with the edit at once, so no annotation stands on a wrong line; then blames again after a pause. */
+  private void edited(int start, int oldEnd, int newEnd) {
+    generation++;
+    if (blame != null) {
+      blame = blame.shifted(start, oldEnd, newEnd);
+      redraw();
+    }
+    display.timerExec(BLAME_DELAY_MS, blameLater);
+  }
+
+  private int lineOf(int offset) {
+    try {
+      return document.getLineOfOffset(Math.min(offset, document.getLength()));
+    }
+    catch (org.eclipse.jface.text.BadLocationException e) {
+      return 0;
+    }
+  }
+
+  private void onUiThread(Runnable runnable) {
+    if (!display.isDisposed()) {
+      display.asyncExec(() -> {
+        if (!disposed) {
+          runnable.run();
+        }
+      });
+    }
   }
 
   /** Blames the editor text on a background thread; a result for an older text is dropped. */
@@ -157,23 +230,25 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
       return;
     }
     String text = document.get();
+    Path blamed = file;
+    Charset encoding = charset;
     int expected = ++generation;
     GitRunner runner = Activator.probeRunner();
     boolean dark = Theme.isDark();
     EXECUTOR.execute(() -> {
       try {
-        LineStatusBase.Key found = key;
-        if (found == null) {
-          found = LineStatusBase.find(new RepositoryLocator(runner), file).orElse(null);
-          key = found;
+        if (!keySearched) {
+          key = LineStatusBase.find(new RepositoryLocator(runner), blamed).orElse(null);
+          keySearched = true;
         }
+        LineStatusBase.Key found = key;
         if (found == null) {
           return;
         }
-        Blame result = new BlameService(runner).blame(found.repository(), found.path(), text, charset);
+        Blame result = new BlameService(runner).blame(found.repository(), found.path(), text, encoding);
         Map<String, Integer> resultColors = AnnotationColors.byCommit(result, dark);
-        canvas.getDisplay().asyncExec(() -> {
-          if (!disposed && expected == generation) {
+        onUiThread(() -> {
+          if (expected == generation) {
             blame = result;
             colors = resultColors;
             relayout();
@@ -181,7 +256,11 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
         });
       }
       catch (GitException e) {
-        canvas.getDisplay().asyncExec(() -> showError(e.userMessage()));
+        onUiThread(() -> showError(e.userMessage()));
+      }
+      catch (RuntimeException e) {
+        // Odd git output must not kill the thread without a word.
+        onUiThread(() -> showError(String.valueOf(e)));
       }
     });
   }
@@ -208,6 +287,11 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     if (blame != null && viewer.getDocument() != null) {
       painter.paint(e.gc, blame, colors, geometry, Theme.isDark(), Clock.systemDefaultZone(), canvas.getClientArea().width);
     }
+  }
+
+  /** The shown blame, or null before the first one; for the tests. */
+  Blame blame() {
+    return blame;
   }
 
   private Optional<BlameCommit> commitAt(int line) {
@@ -295,6 +379,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
 
   @Override
   public void setModel(IAnnotationModel model) {
+    rebindIfInputChanged();
   }
 
   @Override
