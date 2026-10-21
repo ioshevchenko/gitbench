@@ -196,6 +196,12 @@ public final class MergeModel {
 
   /** The state of the Result and of every block, for Undo of a block action. */
   public record Snapshot(String text, int[] starts, int[] ends, boolean[] resolvedLeft, boolean[] resolvedRight, boolean[] oneside) {
+    /** True when both snapshots hold the same text and the same block states; an action that changes nothing is not undone. */
+    public boolean sameState(Snapshot other) {
+      return text.equals(other.text) && java.util.Arrays.equals(starts, other.starts) && java.util.Arrays.equals(ends, other.ends)
+             && java.util.Arrays.equals(resolvedLeft, other.resolvedLeft) && java.util.Arrays.equals(resolvedRight, other.resolvedRight)
+             && java.util.Arrays.equals(oneside, other.oneside);
+    }
   }
 
   public Snapshot snapshot() {
@@ -223,6 +229,7 @@ public final class MergeModel {
       change.setResolved(Side.RIGHT, snapshot.resolvedRight()[i]);
       change.setOnesideAppliedConflict(snapshot.oneside()[i]);
     }
+    resultVersion++;
   }
 
   /**
@@ -411,6 +418,7 @@ public final class MergeModel {
       other.resultStart = beforeChange ? Math.min(start, newStart) : newEnd;
       other.resultEnd = beforeChange ? Math.min(end, newStart) : Math.max(end, newEnd);
     }
+    resultVersion++;
   }
 
   /** DiffUtil.updateRangeOnModification, not greedy. */

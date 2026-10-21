@@ -60,9 +60,13 @@ public final class MergeDialog extends Dialog {
   private MergeColumns columns;
   private MergeModel model;
   private boolean resolved;
-  /** The states before each block action, for Ctrl+Z, and the Result text right after the last action. */
-  private final java.util.Deque<MergeModel.Snapshot> undo = new java.util.ArrayDeque<>();
-  private String textAfterLastAction;
+  /** A block action for Ctrl+Z: the state before it and the state right after it. */
+  private record UndoStep(MergeModel.Snapshot before, MergeModel.Snapshot after) {
+  }
+
+  private final java.util.Deque<UndoStep> undo = new java.util.ArrayDeque<>();
+  /** True while a block action runs: its many Result changes refresh the columns once, at the end. */
+  private boolean batching;
 
   /**
    * {@code service} marks the file resolved; {@code afterSave} tells the workspace and the views. The UI tests pass
@@ -203,7 +207,7 @@ public final class MergeDialog extends Dialog {
 
   /** Repaints the columns and updates the status after a change of the blocks. */
   private void changed() {
-    if (columns == null || model == null) {
+    if (columns == null || model == null || batching) {
       return;
     }
     columns.refresh();
@@ -218,9 +222,18 @@ public final class MergeDialog extends Dialog {
 
   /** Runs a block action so that Ctrl+Z can take it back. */
   private void act(Runnable action) {
-    undo.push(model.snapshot());
-    action.run();
-    textAfterLastAction = resultDocument.get();
+    MergeModel.Snapshot before = model.snapshot();
+    batching = true;
+    try {
+      action.run();
+    }
+    finally {
+      batching = false;
+    }
+    MergeModel.Snapshot after = model.snapshot();
+    if (!before.sameState(after)) {
+      undo.push(new UndoStep(before, after));
+    }
     columns.resetUndo();
     changed();
   }
@@ -230,14 +243,27 @@ public final class MergeDialog extends Dialog {
    * undo of the Result column instead.
    */
   private boolean undoLast() {
-    if (!undo.isEmpty() && resultDocument.get().equals(textAfterLastAction)) {
-      model.restore(undo.pop());
-      textAfterLastAction = resultDocument.get();
-      columns.resetUndo();
-      changed();
-      return true;
+    if (undo.isEmpty()) {
+      return columns.undoTyping();
     }
-    return columns.undoTyping();
+    UndoStep last = undo.peek();
+    batching = true;
+    try {
+      if (!resultDocument.get().equals(last.after().text())) {
+        // Text was typed after the last block action: this Ctrl+Z takes back the typing, the next one the action.
+        model.restore(last.after());
+      }
+      else {
+        undo.pop();
+        model.restore(last.before());
+      }
+    }
+    finally {
+      batching = false;
+    }
+    columns.resetUndo();
+    changed();
+    return true;
   }
 
   private void next() {

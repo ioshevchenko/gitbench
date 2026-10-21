@@ -83,31 +83,38 @@ public final class MergeOpener {
     if (question.open() != 0) {
       return;
     }
+    // A rebase can go on through many commits and hooks: it runs in a job, as the other git operations.
     ConflictService service = new ConflictService(Activator.getDefault().gitRunner());
-    GitException[] error = new GitException[1];
-    BusyIndicator.showWhile(shell.getDisplay(), () -> {
+    org.eclipse.swt.widgets.Display display = shell.getDisplay();
+    Job job = Job.create(action, monitor -> {
+      GitException error = null;
       try {
         service.continueOperation(repository, context);
       }
       catch (GitException e) {
-        error[0] = e;
+        error = e;
       }
-    });
-    Job refresh = Job.create("Refresh after " + action, monitor -> {
       WorkspaceSync.refresh(repository);
       RepositoryEvents.fire(repository);
+      GitException failure = error;
+      display.asyncExec(() -> {
+        if (shell.isDisposed()) {
+          return;
+        }
+        Optional<Loaded> after = load(shell, repository);
+        if (after.isPresent() && !after.get().files().isEmpty()) {
+          // The next commit of the rebase stops on conflicts too.
+          showConflicts(shell, repository);
+        }
+        else if (failure != null) {
+          MessageDialog.openError(shell, action, failure.userMessage());
+        }
+      });
       return Status.OK_STATUS;
     });
-    refresh.setSystem(true);
-    refresh.schedule();
-    Optional<Loaded> after = load(shell, repository);
-    if (after.isPresent() && !after.get().files().isEmpty()) {
-      // The next commit of the rebase stops on conflicts too.
-      showConflicts(shell, repository);
-    }
-    else if (error[0] != null) {
-      MessageDialog.openError(shell, action, error[0].userMessage());
-    }
+    job.setRule(gitbench.ui.OperationRunner.ruleFor(repository));
+    job.setUser(true);
+    job.schedule();
   }
 
   private record Loaded(List<ConflictFile> files, MergeContext context) {

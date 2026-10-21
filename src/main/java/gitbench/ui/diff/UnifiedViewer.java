@@ -22,7 +22,6 @@ import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.jface.text.source.SourceViewerConfiguration;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CLabel;
-import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
@@ -222,7 +221,7 @@ final class UnifiedViewer implements DiffPane {
         int offset = document.getLineOffset(range.line()) + range.startColumn();
         int length = Math.min(range.endColumn() - range.startColumn(), document.getLength() - offset);
         if (length > 0) {
-          presentation.mergeStyleRange(new StyleRange(offset, length, null, DiffColors.color(kind, dark)));
+          TextViewers.mergeWord(presentation, offset, length, DiffColors.color(kind, dark));
         }
       }
       catch (BadLocationException ignored) {

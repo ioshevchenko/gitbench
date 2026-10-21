@@ -64,6 +64,19 @@ public final class TextViewers {
   }
 
   /**
+   * Adds a word background to a presentation, clipped to its extent. A range outside the extent would widen the
+   * presentation, and the viewer would then clear the syntax colors of all the lines in between.
+   */
+  public static void mergeWord(org.eclipse.jface.text.TextPresentation presentation, int offset, int length, Color background) {
+    org.eclipse.jface.text.IRegion extent = presentation.getExtent();
+    int start = Math.max(offset, extent.getOffset());
+    int end = Math.min(offset + length, extent.getOffset() + extent.getLength());
+    if (end > start) {
+      presentation.mergeStyleRange(new StyleRange(start, end - start, null, background));
+    }
+  }
+
+  /**
    * Repaints the word highlighting. With a presentation reconciler the reconciler repaints and the presentation
    * listeners add the words; without one, an empty presentation goes through the listeners here.
    */

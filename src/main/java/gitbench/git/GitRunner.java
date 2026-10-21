@@ -36,6 +36,8 @@ public final class GitRunner {
     ProcessBuilder builder = new ProcessBuilder(command).directory(workDir.toFile());
     builder.environment().put("LC_ALL", "C");
     builder.environment().put("GIT_TERMINAL_PROMPT", "0");
+    // No git command of the plugin may wait for an editor; GIT_EDITOR of the user would win over core.editor.
+    builder.environment().put("GIT_EDITOR", "true");
     Process process;
     try {
       process = builder.start();

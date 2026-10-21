@@ -67,7 +67,7 @@ public final class ConflictService {
       case NONE -> List.of();
     };
     if (!command.isEmpty()) {
-      runner.runOk(repo.root(), command, null);
+      retryOnIndexLock(() -> runner.runOk(repo.root(), command, null));
     }
   }
 
@@ -77,7 +77,8 @@ public final class ConflictService {
     String branch = runner.run(repo.root(), List.of("symbolic-ref", "--short", "-q", "HEAD"), null).stdoutText().trim();
     for (String rebaseDir : List.of("rebase-merge", "rebase-apply")) {
       Path dir = gitDir.resolve(rebaseDir);
-      if (Files.isDirectory(dir)) {
+      // "git am" keeps its state in rebase-apply too, marked by the file "applying"; it is not a rebase.
+      if (Files.isDirectory(dir) && !Files.exists(dir.resolve("applying"))) {
         String headName = read(dir.resolve("head-name")).replaceFirst("^refs/heads/", "");
         String onto = read(dir.resolve("onto"));
         return new MergeContext(MergeOperation.REBASE, headName, onto.isEmpty() ? "" : nameOf(repo, onto));
@@ -159,7 +160,7 @@ public final class ConflictService {
   /** A branch name for the commit, as IntelliJ shows it, or the short hash. */
   private String nameOf(GitRepository repo, String hash) throws GitException {
     GitResult name = runner.run(repo.root(), List.of("name-rev", "--name-only", "--no-undefined", "--refs=refs/heads/*",
-                                                     "--refs=refs/remotes/*", hash), null);
+                                                     "--refs=refs/remotes/*", "--exclude=refs/remotes/*/HEAD", hash), null);
     String text = name.ok() ? name.stdoutText().trim().replaceFirst("^remotes/", "") : "";
     return text.isEmpty() || text.contains("~") || text.contains("^") ? shortHash(hash) : text;
   }

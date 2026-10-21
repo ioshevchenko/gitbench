@@ -45,6 +45,11 @@ public final class OperationRunner {
     }
   }
 
+  /** The rule that keeps git operations of one repository apart, for jobs outside this class. */
+  public static org.eclipse.core.runtime.jobs.ISchedulingRule ruleFor(GitRepository repository) {
+    return new RepositoryRule(repository);
+  }
+
   public static void run(IWorkbenchPartSite site, GitRepository repository, String title, Operation operation) {
     run(site, repository, title, operation, result -> { });
   }

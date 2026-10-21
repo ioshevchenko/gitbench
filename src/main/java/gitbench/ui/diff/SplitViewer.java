@@ -16,7 +16,6 @@ import org.eclipse.jface.text.TextPresentation;
 import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CLabel;
-import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.GC;
@@ -404,8 +403,8 @@ final class SplitViewer implements DiffPane {
           try {
             int offset = document.getLineOffset(range.line()) + range.startColumn();
             int length = Math.min(range.endColumn() - range.startColumn(), document.getLength() - offset);
-            if (length > 0 && overlaps(presentation.getExtent(), offset, length)) {
-              presentation.mergeStyleRange(new StyleRange(offset, length, null, color));
+            if (length > 0) {
+              TextViewers.mergeWord(presentation, offset, length, color);
             }
           }
           catch (BadLocationException ignored) {
@@ -414,10 +413,6 @@ final class SplitViewer implements DiffPane {
         }
       }
     }
-  }
-
-  private static boolean overlaps(org.eclipse.jface.text.IRegion extent, int offset, int length) {
-    return offset < extent.getOffset() + extent.getLength() && extent.getOffset() < offset + length;
   }
 
   /** Header labels in the first row; the left column, the divider and the right column in the second. */

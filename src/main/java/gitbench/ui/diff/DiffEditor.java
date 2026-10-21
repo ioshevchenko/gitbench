@@ -78,6 +78,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   private boolean rediffScheduled;
   /** The left text as git gave it, before the LF normalization, for the "only line separators" notice. */
   private String leftOriginal = "";
+  /** The right text as git gave it when the right side is a revision; null for the working file. */
+  private String rightOriginal;
   private final IDocumentListener documentListener = new IDocumentListener() {
     @Override
     public void documentAboutToBeChanged(DocumentEvent event) {
@@ -204,6 +206,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
     IDocument leftDocument = SideDocuments.revision(leftContent);
     leftOriginal = leftContent.text();
+    rightOriginal = request.right() instanceof DiffSide.Revision ? rightContent.text() : null;
     IDocument rightDocument;
     if (request.right() instanceof DiffSide.WorkingFile file) {
       try {
@@ -356,14 +359,21 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
    * a committed file: the diff becomes empty.
    */
   private void reloadIfCommitted(DiffRequest request) {
+    if (isDirty()) {
+      // Unsaved edits stay as they are; the next repository event after a save switches the diff.
+      return;
+    }
     int generation = loadGeneration;
     Job job = Job.create("Reload diff of " + request.title(), monitor -> {
       try {
-        boolean committed = Activator.getDefault().gitRunner()
-          .run(request.repository().root(), List.of("cat-file", "-e", "HEAD:" + request.path()), null).ok();
+        var runner = Activator.getDefault().gitRunner();
+        var root = request.repository().root();
+        // In HEAD and tracked: an unversioned file that is in HEAD after "git rm --cached" stays as it is.
+        boolean committed = runner.run(root, List.of("cat-file", "-e", "HEAD:" + request.path()), null).ok()
+                            && runner.run(root, List.of("ls-files", "--error-unmatch", "--", request.path()), null).ok();
         if (committed) {
           asyncExec(() -> {
-            if (generation == loadGeneration && diffInput().request().equals(request)) {
+            if (generation == loadGeneration && diffInput().request().equals(request) && !isDirty()) {
               DiffRequest now = new DiffRequest(request.repository(), request.path(), new DiffSide.Revision("HEAD", request.path()),
                                                 request.right());
               replaceInput(diffInput().withRequest(now));
@@ -404,6 +414,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     int version = documentVersion;
     requestedVersion = version;
     String original = leftOriginal;
+    String rightGiven = rightOriginal;
     String leftRaw = content.left().get();
     String rightRaw = content.right().get();
     IgnorePolicy ignore = DiffSettings.ignore();
@@ -420,7 +431,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
         changes = List.of();
         status = "Files are too large to compare";
       }
-      String bannerText = status != null ? status : bannerText(original, rightRaw, leftText, rightText, changes, highlight);
+      String bannerText = status != null ? status
+                          : bannerText(original, rightGiven != null ? rightGiven : rightRaw, leftText, rightText, changes, highlight);
       List<DiffChange> result = changes;
       asyncExec(() -> {
         if (generation == diffGeneration && content != null && pane != null) {
@@ -526,7 +538,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
     // A validated buffer of a read-only file keeps a status that is not OK: it stays read-only.
     if (buffer.isStateValidated()) {
-      return buffer.getStatus() == null || buffer.getStatus().isOK();
+      return !blocks(buffer.getStatus());
     }
     try {
       SideDocuments.manager().validateState(new org.eclipse.core.filebuffers.IFileBuffer[]{buffer}, null, getSite().getShell());
@@ -536,11 +548,18 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       return false;
     }
     org.eclipse.core.runtime.IStatus status = buffer.getStatus();
-    if (!buffer.isStateValidated() || status != null && !status.isOK()) {
-      MessageDialog.openError(getSite().getShell(), "Edit", connectedFile + " is read-only.");
+    if (!buffer.isStateValidated() || blocks(status)) {
+      String reason = status != null && !status.getMessage().isEmpty() ? status.getMessage() : connectedFile + " is read-only.";
+      MessageDialog.openError(getSite().getShell(), "Edit", reason);
       return false;
     }
     return true;
+  }
+
+  /** An error or a cancel stops the edit; a warning, for example of a derived file, does not. */
+  private static boolean blocks(org.eclipse.core.runtime.IStatus status) {
+    return status != null
+           && (status.getSeverity() >= org.eclipse.core.runtime.IStatus.ERROR || status.getSeverity() == org.eclipse.core.runtime.IStatus.CANCEL);
   }
 
   @Override

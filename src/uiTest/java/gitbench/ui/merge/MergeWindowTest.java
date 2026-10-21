@@ -283,4 +283,106 @@ class MergeWindowTest extends SwtTest {
     assertThat(word).isNotNull();
     assertThat(word.background).isEqualTo(gitbench.ui.diff.DiffColors.conflict(false));
   }
+
+  @Test
+  void typingAboveAConflictKeepsTheSyntaxColorsInBetween() throws Exception {
+    StringBuilder base = new StringBuilder();
+    for (int line = 0; line < 50; line++) {
+      base.append("int x").append(line).append(";\n");
+    }
+    String yours = base.toString().replace("int x49;", "int a49;");
+    String theirs = base.toString().replace("int x49;", "int b49;");
+    columns(yours, base.toString(), theirs);
+    // A highlighter like CDT: it colors the keyword "int" red and repairs only the damaged line.
+    org.eclipse.jface.text.source.SourceViewer resultViewer = columns.viewer(ThreeSide.BASE);
+    org.eclipse.jface.text.rules.RuleBasedScanner scanner = new org.eclipse.jface.text.rules.RuleBasedScanner();
+    org.eclipse.jface.text.rules.WordRule keywords = new org.eclipse.jface.text.rules.WordRule(new org.eclipse.jface.text.rules.IWordDetector() {
+      @Override
+      public boolean isWordStart(char c) {
+        return Character.isLetter(c);
+      }
+
+      @Override
+      public boolean isWordPart(char c) {
+        return Character.isLetterOrDigit(c);
+      }
+    });
+    keywords.addWord("int", new org.eclipse.jface.text.rules.Token(
+      new org.eclipse.jface.text.TextAttribute(display.getSystemColor(SWT.COLOR_RED))));
+    scanner.setRules(new org.eclipse.jface.text.rules.IRule[]{keywords});
+    org.eclipse.jface.text.rules.DefaultDamagerRepairer repairer = new org.eclipse.jface.text.rules.DefaultDamagerRepairer(scanner);
+    org.eclipse.jface.text.presentation.PresentationReconciler reconciler = new org.eclipse.jface.text.presentation.PresentationReconciler();
+    reconciler.setDamager(repairer, org.eclipse.jface.text.IDocument.DEFAULT_CONTENT_TYPE);
+    reconciler.setRepairer(repairer, org.eclipse.jface.text.IDocument.DEFAULT_CONTENT_TYPE);
+    reconciler.install(resultViewer);
+    resultViewer.invalidateTextPresentation();
+    pump();
+    StyledText text = columns.text(ThreeSide.BASE);
+    int line25 = result.getLineOffset(25);
+    assertThat(text.getStyleRangeAtOffset(line25)).isNotNull();
+    assertThat(text.getStyleRangeAtOffset(line25).foreground).isEqualTo(display.getSystemColor(SWT.COLOR_RED));
+
+    // Typing on line 0 repairs line 0; the changed words of the conflict on line 49 must not widen that repair.
+    System.err.println("RANGES before " + text.getStyleRanges().length);
+    result.replace(0, 0, "x");
+    pump();
+
+    int line25After = result.getLineOffset(25);
+    System.err.println("RANGES after " + text.getStyleRanges().length + " first " + java.util.Arrays.toString(java.util.Arrays.copyOf(text.getStyleRanges(), 3)));
+    assertThat(text.getStyleRangeAtOffset(line25After)).as("syntax color of line 25 after typing").isNotNull();
+    assertThat(text.getStyleRangeAtOffset(line25After).foreground).isEqualTo(display.getSystemColor(SWT.COLOR_RED));
+  }
+
+  /** Ctrl+Z in the Result column, as the user presses it. */
+  private void pressCtrlZ(StyledText text) {
+    org.eclipse.swt.widgets.Event key = new org.eclipse.swt.widgets.Event();
+    key.keyCode = 'z';
+    key.character = (char)26;
+    key.stateMask = SWT.MOD1;
+    text.notifyListeners(SWT.KeyDown, key);
+    pump();
+  }
+
+  @Test
+  void ctrlZGoesBackStepByStepOverTypedText() throws Exception {
+    repo = TempRepo.init();
+    repo.write("a.c", "a\nb\nc\nd\ne\n");
+    repo.commitAll("base");
+    repo.git("checkout", "-q", "-b", "feature");
+    repo.write("a.c", "a\nB2\nc\nD2\ne\n");
+    repo.commitAll("theirs");
+    repo.git("checkout", "-q", "main");
+    repo.write("a.c", "a\nB1\nc\nD1\ne\n");
+    repo.commitAll("ours");
+    repo.gitMayFail("merge", "-q", "feature");
+    repository = new GitRepository(repo.root());
+    GitRunner runner = new GitRunner(() -> "git", GitCommandListener.NONE);
+    service = new ConflictService(runner);
+    ConflictFile file = service.list(repository).get(0);
+    MergeContext context = service.context(repository);
+    MergeContents contents = MergeContentLoader.load(runner, repository, file, context, StandardCharsets.UTF_8);
+    MergeDialog dialog = new MergeDialog(shell, repository, file, context, contents, StandardCharsets.UTF_8, service, () -> { });
+    dialog.setBlockOnOpen(false);
+    dialog.open();
+    pump();
+    columns = dialog.columns();
+    model = dialog.model();
+    StyledText text = columns.text(ThreeSide.BASE);
+    org.eclipse.jface.text.IDocument document = columns.viewer(ThreeSide.BASE).getDocument();
+    String start = document.get();
+
+    clickBlockButton(model.changes().get(0), true, false);
+    String afterA = document.get();
+    document.replace(0, 0, "typed\n");
+    pump();
+    String afterTyping = document.get();
+    clickBlockButton(model.changes().get(1), true, false);
+
+    pressCtrlZ(text);
+    assertThat(document.get()).as("first Ctrl+Z takes back block B").isEqualTo(afterTyping);
+    pressCtrlZ(text);
+    assertThat(document.get()).as("second Ctrl+Z takes back the typing").isEqualTo(afterA);
+    pressCtrlZ(text);
+    assertThat(document.get()).as("third Ctrl+Z takes back block A").isEqualTo(start);
+  }
 }

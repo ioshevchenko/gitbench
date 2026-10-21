@@ -276,7 +276,7 @@ final class MergeColumns {
           int offset = document.getLineOffset(range.line()) + range.startColumn();
           int length = Math.min(range.endColumn() - range.startColumn(), document.getLength() - offset);
           if (length > 0) {
-            presentation.mergeStyleRange(new org.eclipse.swt.custom.StyleRange(offset, length, null, color));
+            TextViewers.mergeWord(presentation, offset, length, color);
           }
         }
         catch (BadLocationException ignored) {
@@ -426,7 +426,8 @@ final class MergeColumns {
       .toList();
   }
 
-  private SourceViewer viewer(ThreeSide side) {
+  /** The viewer of a column; package-private for the UI tests. */
+  SourceViewer viewer(ThreeSide side) {
     return switch (side) {
       case LEFT -> yours;
       case BASE -> result;
