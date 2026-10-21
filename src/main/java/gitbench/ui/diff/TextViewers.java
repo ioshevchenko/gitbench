@@ -23,8 +23,8 @@ final class TextViewers {
   private TextViewers() {
   }
 
-  /** A source viewer with line numbers, the editor text font, and syntax highlighting when CDT knows the file. */
-  static SourceViewer create(Composite parent, boolean dark, String fileName, IDocument document, boolean editable) {
+  /** A source viewer with line numbers and the editor text font. {@link CdtHighlighting} adds the syntax colors. */
+  static SourceViewer create(Composite parent, boolean dark, IDocument document, boolean editable) {
     CompositeRuler ruler = new CompositeRuler();
     LineNumberRulerColumn numbers = new LineNumberRulerColumn();
     numbers.setForeground(dark ? DARK_LINE_NUMBERS : LIGHT_LINE_NUMBERS);

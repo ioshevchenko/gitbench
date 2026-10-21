@@ -69,11 +69,11 @@ final class SplitViewer implements DiffPane {
     control = new Composite(parent, SWT.NONE);
     leftTitle = new Label(control, SWT.NONE);
     rightTitle = new Label(control, SWT.NONE);
-    left = TextViewers.create(control, dark, initial.fileName(), initial.left(), false);
+    left = TextViewers.create(control, dark, initial.left(), false);
     divider = new Canvas(control, SWT.DOUBLE_BUFFERED);
-    right = TextViewers.create(control, dark, initial.fileName(), initial.right(), initial.rightEditable());
-    hasReconciler = CdtHighlighting.configure(left, initial.left(), initial.fileName())
-                    & CdtHighlighting.configure(right, initial.right(), initial.fileName());
+    right = TextViewers.create(control, dark, initial.right(), initial.rightEditable());
+    hasReconciler = CdtHighlighting.configure(left, initial.left(), initial.file())
+                    & CdtHighlighting.configure(right, initial.right(), initial.file());
     control.setLayout(new SplitLayout());
 
     installSide(left, Side.LEFT);

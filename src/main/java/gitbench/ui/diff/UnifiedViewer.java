@@ -90,7 +90,7 @@ final class UnifiedViewer implements DiffPane {
     viewer.setEditable(false);
     StyledText text = viewer.getTextWidget();
     text.setFont(JFaceResources.getTextFont());
-    hasReconciler = CdtHighlighting.configure(viewer, document, initial.fileName());
+    hasReconciler = CdtHighlighting.configure(viewer, document, initial.file());
 
     text.addLineBackgroundListener(e -> {
       if (model == null) {

@@ -207,7 +207,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
     boolean localChanges = request.left() instanceof DiffSide.Revision && request.right() instanceof DiffSide.WorkingFile;
     content = new DiffContent(leftDocument, rightDocument, leftContent.title(), rightContent.title(), request.right().editable(),
-                              localChanges, request.title(), DiffText.of(""), DiffText.of(""), List.of());
+                              localChanges, request.repository().root().resolve(request.path()), DiffText.of(""), DiffText.of(""), List.of());
     createPane();
     firePropertyChange(PROP_DIRTY);
     rediff();

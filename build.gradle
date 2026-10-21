@@ -11,7 +11,7 @@ def eclipseBundles = [
     'org.eclipse.ui.editors_*', 'org.eclipse.ui.workbench.texteditor_*', 'org.eclipse.text_*',
     'org.eclipse.core.runtime_*', 'org.eclipse.core.filesystem_*', 'org.eclipse.core.resources_*', 'org.eclipse.core.jobs_*',
     'org.eclipse.core.commands_*', 'org.eclipse.equinox.common_*', 'org.eclipse.equinox.preferences_*',
-    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.core.filebuffers_*', 'org.osgi.service.prefs_*', 'org.eclipse.e4.ui.*'
+    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.core.filebuffers_*', 'org.eclipse.cdt.ui_*', 'org.eclipse.cdt.core_*', 'org.osgi.service.prefs_*', 'org.eclipse.e4.ui.*'
 ]
 
 repositories {
