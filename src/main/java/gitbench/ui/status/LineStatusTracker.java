@@ -2,6 +2,7 @@ package gitbench.ui.status;
 
 import gitbench.diff.DiffChange;
 import gitbench.status.LineStatus;
+import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentListener;
@@ -36,17 +37,33 @@ public final class LineStatusTracker {
   private final IDocumentListener documentListener = new IDocumentListener() {
     @Override
     public void documentAboutToBeChanged(DocumentEvent event) {
+      editStart = lineOf(event.getOffset());
+      editOldEnd = lineOf(event.getOffset() + event.getLength());
     }
 
     @Override
     public void documentChanged(DocumentEvent event) {
-      generation++;
-      display.timerExec(COMPARE_DELAY_MS, compareLater);
+      int newEnd = lineOf(event.getOffset() + (event.getText() == null ? 0 : event.getText().length()));
+      if (Display.getCurrent() == display) {
+        edited(editStart, editOldEnd, newEnd);
+      }
+      else {
+        // A change on another thread: the state belongs to the UI thread, so the markers wait for the comparison.
+        onUiThread(() -> {
+          ranges = List.of();
+          edited(0, 0, 0);
+        });
+      }
     }
   };
+  /** The first and the last line of the text that the current change replaces. */
+  private int editStart;
+  private int editOldEnd;
 
-  /** Null until the first load ends. */
+  /** Null until the first load ends. The ranges always belong to this base. */
   private Optional<String> base;
+  /** A loaded base that waits for its comparison; then it becomes {@link #base} together with the ranges. */
+  private Optional<String> pendingBase;
   private List<DiffChange> ranges = List.of();
   private int generation;
   private int baseGeneration;
@@ -89,7 +106,7 @@ public final class LineStatusTracker {
       Optional<String> result = loaded;
       onUiThread(() -> {
         if (expected == baseGeneration) {
-          base = result;
+          pendingBase = result;
           compare();
         }
       });
@@ -107,22 +124,49 @@ public final class LineStatusTracker {
     listeners.clear();
   }
 
+  /**
+   * Moves the ranges with the edit at once, as the IntelliJ DocumentTracker does, so the markers and Rollback Lines
+   * never use the lines of the old text; then compares again after a pause in typing.
+   */
+  private void edited(int start, int oldEnd, int newEnd) {
+    generation++;
+    ranges = LineStatus.shift(ranges, start, oldEnd, newEnd);
+    fire();
+    display.timerExec(COMPARE_DELAY_MS, compareLater);
+  }
+
+  private int lineOf(int offset) {
+    try {
+      return document.getLineOfOffset(Math.min(offset, document.getLength()));
+    }
+    catch (BadLocationException e) {
+      return 0;
+    }
+  }
+
   private void compare() {
-    if (disposed || base == null) {
+    Optional<String> used = pendingBase != null ? pendingBase : base;
+    if (disposed || used == null) {
       return;
     }
-    if (base.isEmpty()) {
+    if (used.isEmpty()) {
+      base = used;
+      pendingBase = null;
       ranges = List.of();
       fire();
       return;
     }
-    String baseText = base.get();
+    String baseText = used.get();
     String text = document.get();
     int expected = ++generation;
     EXECUTOR.execute(() -> {
       List<DiffChange> computed = LineStatus.compute(baseText, text);
       onUiThread(() -> {
         if (expected == generation) {
+          base = used;
+          if (pendingBase == used) {
+            pendingBase = null;
+          }
           ranges = computed;
           fire();
         }

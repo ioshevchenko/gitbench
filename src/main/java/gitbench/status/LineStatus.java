@@ -53,6 +53,27 @@ public final class LineStatus {
     return -1;
   }
 
+  /**
+   * The ranges right after an edit, before the next comparison, as the IntelliJ DocumentTracker keeps them: the old
+   * lines {@code start..oldEnd} of the document became the lines {@code start..newEnd}. Ranges above stay, ranges below
+   * move by the line delta, and ranges that touch the edited lines are dropped until the comparison brings them back.
+   */
+  public static List<DiffChange> shift(List<DiffChange> ranges, int start, int oldEnd, int newEnd) {
+    int delta = newEnd - oldEnd;
+    List<DiffChange> result = new java.util.ArrayList<>(ranges.size());
+    for (DiffChange range : ranges) {
+      int end = Math.max(range.endLine2(), range.startLine2() + 1);
+      if (end <= start) {
+        result.add(range);
+      }
+      else if (range.startLine2() > oldEnd) {
+        result.add(new DiffChange(range.startLine1(), range.endLine1(), range.startLine2() + delta, range.endLine2() + delta,
+                                  range.kind(), range.inner(Side.LEFT), List.of()));
+      }
+    }
+    return result;
+  }
+
   /** The edit of the document that puts the HEAD lines of the range back. */
   public static Edit rollback(String base, String current, DiffChange range) {
     return BlockApplier.replace(DiffText.of(base), DiffText.of(current), range, Side.LEFT);

@@ -88,6 +88,32 @@ class LineStatusTest {
     assertRollback("a\nb", "a\nc");
   }
 
+  private static DiffChange modified(int line) {
+    return new DiffChange(line, line + 1, line, line + 1, BlockKind.MODIFIED, List.of(), List.of());
+  }
+
+  @Test
+  void shiftMovesRangesBelowTheEdit() {
+    // Enter on line 0: old lines 0..0 become new lines 0..1.
+    List<DiffChange> shifted = LineStatus.shift(List.of(modified(4)), 0, 0, 1);
+
+    assertThat(shifted).singleElement().satisfies(r -> {
+      assertThat(r.startLine2()).isEqualTo(5);
+      assertThat(r.endLine2()).isEqualTo(6);
+      assertThat(r.startLine1()).isEqualTo(4);
+    });
+  }
+
+  @Test
+  void shiftKeepsRangesAboveTheEdit() {
+    assertThat(LineStatus.shift(List.of(modified(1)), 3, 5, 3)).containsExactly(modified(1));
+  }
+
+  @Test
+  void shiftDropsRangesTouchedByTheEdit() {
+    assertThat(LineStatus.shift(List.of(modified(2), modified(7)), 2, 2, 2)).containsExactly(modified(7));
+  }
+
   private static void assertRollback(String base, String current) {
     List<DiffChange> ranges = LineStatus.compute(base, current);
     assertThat(ranges).hasSize(1);

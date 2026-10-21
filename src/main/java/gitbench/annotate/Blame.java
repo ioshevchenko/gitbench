@@ -13,6 +13,21 @@ public record Blame(List<String> lineHashes, Map<String, BlameCommit> commits) {
     commits = Map.copyOf(commits);
   }
 
+  /**
+   * The blame right after an edit, before the next blame: the old lines {@code start..oldEnd} became the lines
+   * {@code start..newEnd}, which are not committed now; the lines below move with them.
+   */
+  public Blame shifted(int start, int oldEnd, int newEnd) {
+    List<String> hashes = new java.util.ArrayList<>(lineHashes.subList(0, Math.min(start, lineHashes.size())));
+    for (int line = start; line <= newEnd; line++) {
+      hashes.add(UNCOMMITTED);
+    }
+    if (oldEnd + 1 < lineHashes.size()) {
+      hashes.addAll(lineHashes.subList(oldEnd + 1, lineHashes.size()));
+    }
+    return new Blame(hashes, commits);
+  }
+
   /** The commit of the line; empty for a line that is not committed and for a line outside the file. */
   public Optional<BlameCommit> commitAt(int line) {
     if (line < 0 || line >= lineHashes.size() || UNCOMMITTED.equals(lineHashes.get(line))) {

@@ -86,4 +86,40 @@ class LineStatusTrackerTest extends SwtTest {
     assertThat(tracker.ranges()).isEmpty();
     assertThat(tracker.base()).isEmpty();
   }
+
+  @Test
+  void rangesShiftAtOnceOnAnEdit() throws Exception {
+    String base = "0\n1\n2\n3\n4\n5\n";
+    Document document = new Document("0\n1\n2\n3\nX\n5\n");
+    tracker = new LineStatusTracker(document, () -> Optional.of(base), display);
+    waitFor(() -> tracker.ranges().size() == 1);
+
+    document.replace(0, 0, "new\n");
+
+    // No events ran yet: the range moved with the text before the next comparison.
+    assertThat(tracker.ranges()).singleElement().satisfies(r -> assertThat(r.startLine2()).isEqualTo(5));
+  }
+
+  @Test
+  void documentChangeFromABackgroundThreadIsSafe() throws Exception {
+    String base = "a\nb\n";
+    Document document = new Document(base);
+    tracker = new LineStatusTracker(document, () -> Optional.of(base), display);
+    waitFor(() -> tracker.base().isPresent());
+    Throwable[] failure = {null};
+
+    Thread thread = new Thread(() -> {
+      try {
+        document.replace(0, 1, "A");
+      }
+      catch (Throwable e) {
+        failure[0] = e;
+      }
+    });
+    thread.start();
+    thread.join();
+
+    assertThat(failure[0]).isNull();
+    waitFor(() -> tracker.ranges().size() == 1);
+  }
 }
