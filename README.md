@@ -4,6 +4,10 @@ An IntelliJ-style Git UI for STM32CubeIDE and other Eclipse-based IDEs.
 
 Gitbench brings the Git tool windows of IntelliJ IDEA to Eclipse: the same layout, New UI icons, colors and behavior. It runs the git command line. It does not need EGit and does not interfere with it.
 
+> **Early stage.** Gitbench is at an early stage of development. Expect missing features and bugs. Please report them in [Issues](https://github.com/ioshevchenko/gitbench/issues).
+>
+> **AI-assisted development.** Gitbench is developed with the help of AI coding tools. A person reviews and tests each change.
+
 > Gitbench is an independent project. It is not affiliated with or endorsed by JetBrains or STMicroelectronics.
 
 ## Features
