@@ -52,6 +52,8 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   private volatile LineStatusBase.Key key;
   private volatile boolean keySearched;
   private int hovered = -1;
+  /** The range under the left button press, or -1. */
+  private int pressed = -1;
   private LineGeometry geometry;
   private IPartListener2 activationListener;
   private final Consumer<GitRepository> repositoryListener = repository -> {
@@ -81,6 +83,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     canvas.addListener(SWT.MouseMove, e -> setHovered(ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y)));
     canvas.addListener(SWT.MouseExit, e -> setHovered(-1));
     canvas.addListener(SWT.MouseDown, this::mouseDown);
+    canvas.addListener(SWT.MouseUp, this::mouseUp);
     canvas.addListener(SWT.Dispose, e -> dispose());
     viewer.addViewportListener(viewportListener);
     viewer.addTextListener(textListener);
@@ -192,13 +195,19 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   }
 
   private void mouseDown(Event e) {
-    if (e.button != 1) {
-      return;
-    }
-    int index = ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y);
-    if (index >= 0) {
+    pressed = e.button == 1 ? ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y) : -1;
+  }
+
+  /**
+   * A click opens the popup on the release, as IntelliJ does. Opened on the press, the popup would lose the focus to
+   * the editor with the release and close at once.
+   */
+  private void mouseUp(Event e) {
+    int index = e.button == 1 ? ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y) : -1;
+    if (index >= 0 && index == pressed) {
       openPopup(index);
     }
+    pressed = -1;
   }
 
   /** Opens the popup of the range under its marker, as a click on the marker does. */
@@ -212,7 +221,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
       y += geometry.lineHeight() / 2;
     }
     org.eclipse.swt.graphics.Point location = canvas.toDisplay(ChangeMarkerPainter.WIDTH, y);
-    new ChangeMarkerPopup(canvas.getShell(), tracker.document(), tracker, index, location, new ChangeMarkerPopup.Actions() {
+    new ChangeMarkerPopup(canvas.getShell(), text, tracker.document(), tracker, index, location, new ChangeMarkerPopup.Actions() {
       @Override
       public void showDiff(int documentLine) {
         ChangeMarkerColumn.this.showDiff(documentLine);

@@ -14,7 +14,6 @@ import gitbench.ui.GitbenchIcons.Icon;
 import gitbench.ui.Theme;
 import gitbench.ui.diff.DiffColors;
 import gitbench.ui.diff.DocumentEdits;
-import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.swt.SWT;
@@ -25,9 +24,13 @@ import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Listener;
+import org.eclipse.swt.widgets.Monitor;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.ToolBar;
 import org.eclipse.swt.widgets.ToolItem;
@@ -64,22 +67,30 @@ public final class ChangeMarkerPopup {
   private final ToolItem next;
   private final ToolItem copy;
   private StyledText text;
+  /** The editor text: the popup takes its font and colors. */
+  private final StyledText editorText;
+  private final Point location;
   private int rangeIndex;
-  private boolean activated;
 
-  public ChangeMarkerPopup(Shell parent, IDocument document, LineStatusTracker tracker, int rangeIndex, Point location, Actions actions) {
+  public ChangeMarkerPopup(Shell parent, StyledText editorText, IDocument document, LineStatusTracker tracker, int rangeIndex, Point location,
+                           Actions actions) {
     this.document = document;
     this.tracker = tracker;
     this.actions = actions;
     this.ranges = tracker.ranges();
     this.rangeIndex = rangeIndex;
+    this.editorText = editorText;
+    this.location = location;
     shell = new Shell(parent, SWT.ON_TOP | SWT.TOOL | SWT.BORDER);
+    // The Eclipse theme does not style a popup shell, so it takes the colors of the editor.
+    shell.setBackground(editorText.getBackground());
     GridLayout layout = new GridLayout(1, false);
     layout.marginWidth = 0;
     layout.marginHeight = 0;
     layout.verticalSpacing = 0;
     shell.setLayout(layout);
     toolBar = new ToolBar(shell, SWT.FLAT | SWT.HORIZONTAL);
+    toolBar.setBackground(editorText.getBackground());
     previous = item(Icon.UP, "Previous Change", () -> move(-1));
     next = item(Icon.DOWN, "Next Change", () -> move(1));
     item(Icon.ROLLBACK, "Rollback Lines", this::rollback);
@@ -96,16 +107,35 @@ public final class ChangeMarkerPopup {
     };
     shell.addListener(SWT.Traverse, escape);
     toolBar.addListener(SWT.Traverse, escape);
-    shell.addListener(SWT.Activate, e -> activated = true);
-    // A popup that never got the focus must not close at once; one that had it closes when the user clicks elsewhere.
-    shell.addListener(SWT.Deactivate, e -> {
-      if (activated) {
-        shell.getDisplay().asyncExec(this::close);
+    // As the IntelliJ hint: a click outside the popup or leaving the IDE window closes it.
+    Display display = shell.getDisplay();
+    Listener outsideClick = this::outsideClick;
+    Listener parentDeactivated = this::parentDeactivated;
+    display.addFilter(SWT.MouseDown, outsideClick);
+    parent.addListener(SWT.Deactivate, parentDeactivated);
+    shell.addListener(SWT.Dispose, e -> {
+      display.removeFilter(SWT.MouseDown, outsideClick);
+      if (!parent.isDisposed()) {
+        parent.removeListener(SWT.Deactivate, parentDeactivated);
       }
     });
     show();
-    shell.setLocation(location);
     shell.open();
+  }
+
+  private void outsideClick(org.eclipse.swt.widgets.Event e) {
+    if (e.widget instanceof Control control && control.getShell() != shell) {
+      close();
+    }
+  }
+
+  private void parentDeactivated(org.eclipse.swt.widgets.Event e) {
+    shell.getDisplay().asyncExec(() -> {
+      Shell active = shell.isDisposed() ? null : shell.getDisplay().getActiveShell();
+      if (active != shell && active != shell.getParent()) {
+        close();
+      }
+    });
   }
 
   Shell shell() {
@@ -149,7 +179,10 @@ public final class ChangeMarkerPopup {
     }
     if (range.kind() != BlockKind.INSERTED) {
       text = new StyledText(shell, SWT.READ_ONLY | SWT.H_SCROLL | SWT.V_SCROLL);
-      text.setFont(JFaceResources.getTextFont());
+      text.setAlwaysShowScrollBars(false);
+      text.setFont(editorText.getFont());
+      text.setBackground(editorText.getBackground());
+      text.setForeground(editorText.getForeground());
       text.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
       text.addListener(SWT.Traverse, e -> {
         if (e.detail == SWT.TRAVERSE_ESCAPE) {
@@ -161,11 +194,31 @@ public final class ChangeMarkerPopup {
       text.setText(head);
       paintWords(range, head);
     }
-    Point size = shell.computeSize(SWT.DEFAULT, SWT.DEFAULT);
-    int lineHeight = text == null ? 0 : text.getLineHeight();
-    int maxHeight = toolBar.computeSize(SWT.DEFAULT, SWT.DEFAULT).y + lineHeight * MAX_VISIBLE_LINES;
-    shell.setSize(Math.min(size.x, MAX_WIDTH), Math.min(size.y, Math.max(maxHeight, toolBar.computeSize(SWT.DEFAULT, SWT.DEFAULT).y)));
+    Point toolBarSize = toolBar.computeSize(SWT.DEFAULT, SWT.DEFAULT);
+    int width = toolBarSize.x;
+    int height = toolBarSize.y;
+    if (text != null) {
+      // The whole text fits up to the limits; the scroll bars show only beyond them.
+      Point textSize = text.computeSize(SWT.DEFAULT, SWT.DEFAULT);
+      width = Math.max(width, Math.min(textSize.x, MAX_WIDTH));
+      height += Math.min(textSize.y, text.getLineHeight() * MAX_VISIBLE_LINES + (textSize.y - text.getLineHeight() * text.getLineCount()));
+    }
+    Rectangle trim = shell.computeTrim(0, 0, width, height);
+    shell.setBounds(place(trim.width, trim.height));
     shell.layout(true, true);
+  }
+
+  /** The popup at the asked location, moved inside the monitor that holds it. */
+  private Rectangle place(int width, int height) {
+    Rectangle area = shell.getDisplay().getPrimaryMonitor().getClientArea();
+    for (Monitor monitor : shell.getDisplay().getMonitors()) {
+      if (monitor.getBounds().contains(location)) {
+        area = monitor.getClientArea();
+      }
+    }
+    int x = Math.max(area.x, Math.min(location.x, area.x + area.width - width));
+    int y = Math.max(area.y, Math.min(location.y, area.y + area.height - height));
+    return new Rectangle(x, y, width, height);
   }
 
   /** The HEAD lines of the range, without the last line separator. */

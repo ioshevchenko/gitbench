@@ -2,7 +2,11 @@ package gitbench.ui.status;
 
 import gitbench.ui.SwtTest;
 import org.eclipse.jface.text.Document;
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.ToolItem;
@@ -41,8 +45,21 @@ class ChangeMarkerPopupTest extends SwtTest {
     return document;
   }
 
+  /** The editor text the popup takes its font and colors from: dark, as in the dark theme. */
+  private StyledText editorText;
+
   private ChangeMarkerPopup open(Document document, int range) {
-    ChangeMarkerPopup popup = new ChangeMarkerPopup(shell, document, tracker, range, new Point(100, 100), new ChangeMarkerPopup.Actions() {
+    return open(document, range, new Point(100, 100));
+  }
+
+  private ChangeMarkerPopup open(Document document, int range, Point location) {
+    if (editorText == null) {
+      editorText = new StyledText(shell, SWT.NONE);
+      editorText.setBackground(new Color(0x1E, 0x1F, 0x22));
+      editorText.setForeground(new Color(0xBC, 0xBE, 0xC4));
+      editorText.setFont(JFaceResources.getTextFont());
+    }
+    ChangeMarkerPopup popup = new ChangeMarkerPopup(shell, editorText, document, tracker, range, location, new ChangeMarkerPopup.Actions() {
       @Override
       public void showDiff(int documentLine) {
         diffs.add(documentLine);
@@ -149,6 +166,54 @@ class ChangeMarkerPopupTest extends SwtTest {
     popup.shell().notifyListeners(SWT.Traverse, escape);
     pump();
 
+    assertThat(popup.shell().isDisposed()).isTrue();
+  }
+
+  @Test
+  void popupUsesTheEditorFontAndColors() throws Exception {
+    Document document = track("a\nb\nc\n", "a\nB\nc\n", 1);
+    ChangeMarkerPopup popup = open(document, 0);
+
+    assertThat(popup.text().getBackground()).isEqualTo(editorText.getBackground());
+    assertThat(popup.text().getForeground()).isEqualTo(editorText.getForeground());
+    assertThat(popup.text().getFont()).isEqualTo(editorText.getFont());
+    assertThat(popup.toolBar().getBackground()).isEqualTo(editorText.getBackground());
+  }
+
+  @Test
+  void shortTextHasNoScrollBars() throws Exception {
+    Document document = track("a\nb\nb2\nc\n", "a\nB\nc\n", 1);
+    ChangeMarkerPopup popup = open(document, 0);
+
+    assertThat(popup.text().getHorizontalBar().isVisible()).isFalse();
+    assertThat(popup.text().getVerticalBar().isVisible()).isFalse();
+    assertThat(popup.text().getClientArea().height).isGreaterThanOrEqualTo(2 * popup.text().getLineHeight());
+  }
+
+  @Test
+  void popupStaysOnTheMonitor() throws Exception {
+    Document document = track("a\nb\nc\n", "a\nB\nc\n", 1);
+    Rectangle area = display.getPrimaryMonitor().getClientArea();
+
+    ChangeMarkerPopup popup = open(document, 0, new Point(area.x + area.width - 5, area.y + area.height - 5));
+
+    assertThat(area.contains(popup.shell().getBounds().x, popup.shell().getBounds().y)).isTrue();
+    Rectangle bounds = popup.shell().getBounds();
+    assertThat(bounds.x + bounds.width).isLessThanOrEqualTo(area.x + area.width);
+    assertThat(bounds.y + bounds.height).isLessThanOrEqualTo(area.y + area.height);
+  }
+
+  @Test
+  void aClickOutsideClosesThePopupAndAClickInsideKeepsIt() throws Exception {
+    Document document = track("a\nb\nc\n", "a\nB\nc\n", 1);
+    ChangeMarkerPopup popup = open(document, 0);
+
+    popup.text().notifyListeners(SWT.MouseDown, new Event());
+    pump();
+    assertThat(popup.shell().isDisposed()).isFalse();
+
+    editorText.notifyListeners(SWT.MouseDown, new Event());
+    pump();
     assertThat(popup.shell().isDisposed()).isTrue();
   }
 }
