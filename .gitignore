@@ -1,0 +1,6 @@
+.gradle/
+build/
+.superpowers/
+*.class
+.idea/
+out/
