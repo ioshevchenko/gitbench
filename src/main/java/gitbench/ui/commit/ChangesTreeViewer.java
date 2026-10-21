@@ -109,6 +109,23 @@ final class ChangesTreeViewer {
     onInclusionChanged.run();
   }
 
+  /** Returns all files in the order of the tree: the chain of Previous File and Next File in the diff. */
+  List<FileChange> changesInTreeOrder() {
+    List<FileChange> files = new ArrayList<>();
+    if (viewer.getInput() instanceof List<?> roots) {
+      for (Object root : roots) {
+        InclusionModel.collect((ChangesTreeNode)root, files);
+      }
+    }
+    return files.stream().distinct().toList();
+  }
+
+  /** Tells whether only file nodes are selected, so a double click opens a diff and does not expand a folder. */
+  boolean onlyFilesSelected() {
+    List<?> selected = ((IStructuredSelection)viewer.getSelection()).toList();
+    return !selected.isEmpty() && selected.stream().allMatch(ChangesTreeNode.File.class::isInstance);
+  }
+
   /** Returns the files under the selected nodes. */
   List<FileChange> selectedChanges() {
     List<FileChange> files = new ArrayList<>();

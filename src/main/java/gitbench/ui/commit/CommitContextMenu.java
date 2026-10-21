@@ -47,6 +47,9 @@ final class CommitContextMenu {
       if (e.keyCode == SWT.F4 && e.stateMask == 0) {
         jumpToSource(selected);
       }
+      else if (e.keyCode == 'd' && (e.stateMask & SWT.MODIFIER_MASK) == SWT.MOD1) {
+        view.showDiff(selected);
+      }
       else if (e.keyCode == 'a' && (e.stateMask & SWT.MOD1) != 0 && (e.stateMask & SWT.ALT) != 0) {
         addToVcs(unversioned(selected));
       }
@@ -61,7 +64,7 @@ final class CommitContextMenu {
     List<FileChange> unversioned = unversioned(selected);
     menu.add(action("Commit File...", !selected.isEmpty(), () -> commitFiles(selected)));
     menu.add(action("Rollback...", !versioned.isEmpty(), () -> view.rollback(versioned)));
-    menu.add(action("Show Diff", false, () -> { }));
+    menu.add(action("Show Diff\tCtrl+D", !selected.isEmpty(), () -> view.showDiff(selected)));
     menu.add(action("Jump to Source\tF4", !selected.isEmpty(), () -> jumpToSource(selected)));
     menu.add(action("Copy Path", !selected.isEmpty(), () -> copyPaths(selected)));
     menu.add(new Separator());

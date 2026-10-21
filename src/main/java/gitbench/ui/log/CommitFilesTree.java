@@ -91,6 +91,23 @@ final class CommitFilesTree {
     viewer.expandAll();
   }
 
+  /** All files in the order of the tree: the chain of Previous File and Next File in the diff. */
+  List<FileChange> filesInTreeOrder() {
+    List<FileChange> result = new ArrayList<>();
+    if (viewer.getInput() instanceof List<?> nodes) {
+      for (Object node : nodes) {
+        gitbench.model.InclusionModel.collect((ChangesTreeNode)node, result);
+      }
+    }
+    return result;
+  }
+
+  /** Tells whether only file nodes are selected, so a double click opens a diff and does not expand a folder. */
+  boolean onlyFilesSelected() {
+    List<?> selected = ((IStructuredSelection)viewer.getSelection()).toList();
+    return !selected.isEmpty() && selected.stream().allMatch(ChangesTreeNode.File.class::isInstance);
+  }
+
   List<FileChange> selectedFiles() {
     List<FileChange> result = new ArrayList<>();
     for (Object element : ((IStructuredSelection)viewer.getSelection()).toList()) {

@@ -86,6 +86,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
   };
   private final IFileBufferListener bufferListener = new DirtyListener();
+  private final java.util.function.Consumer<gitbench.git.GitRepository> repositoryListener =
+    repository -> asyncExec(() -> repositoryChanged(repository));
 
   @Override
   public void init(IEditorSite site, IEditorInput input) throws PartInitException {
@@ -96,6 +98,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     setInput(input);
     setPartName(input.getName());
     setTitleToolTip(input.getToolTipText());
+    gitbench.ui.RepositoryEvents.listen(repositoryListener);
   }
 
   private DiffEditorInput diffInput() {
@@ -260,6 +263,43 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     banner.setVisible(visible);
     ((GridData)banner.getLayoutData()).exclude = !visible;
     root.layout(true);
+  }
+
+  /**
+   * After a commit, a checkout or a reset the left side named HEAD may show another revision: read it again, so the
+   * diff of a committed file becomes empty, as in IntelliJ. A side given by a hash never changes.
+   */
+  private void repositoryChanged(gitbench.git.GitRepository repository) {
+    DiffRequest request = diffInput().request();
+    if (content == null || !repository.equals(request.repository()) || !(request.left() instanceof DiffSide.Revision revision)
+        || revision.revision().matches("[0-9a-f]{40}")) {
+      return;
+    }
+    IDocument leftDocument = content.left();
+    int generation = loadGeneration;
+    var charset = SideDocuments.charsetOf(content.file());
+    Job job = Job.create("Reload diff of " + request.title(), monitor -> {
+      LoadedContent loaded;
+      try {
+        loaded = DiffContentLoader.load(Activator.getDefault().gitRunner(), request.repository(), revision, charset);
+      }
+      catch (GitException e) {
+        // The file is gone from HEAD, for example after a reset: the left side is empty now.
+        loaded = new LoadedContent("", false, charset, "\n", revision.revision());
+      }
+      LoadedContent result = loaded;
+      asyncExec(() -> {
+        if (generation == loadGeneration && content != null && content.left() == leftDocument && !result.binary()) {
+          leftDocument.set(DiffText.of(result.text()).text());
+          content = content.withLeftTitle(result.title());
+          pane.setContent(content);
+          rediff();
+        }
+      });
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
   }
 
   // Comparison
@@ -513,6 +553,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
 
   @Override
   public void dispose() {
+    gitbench.ui.RepositoryEvents.unlisten(repositoryListener);
     unload();
     super.dispose();
   }

@@ -82,6 +82,9 @@ public final class GitLogView extends ViewPart {
   private SashForm rightSide;
   private SashForm mainSash;
   private CommitFilesTree files;
+  /** The commit whose files the file tree shows, and its parents; the diff of a file compares with the first parent. */
+  private String filesCommit;
+  private List<String> filesParents = List.of();
   private CommitDetailsPanel detailsPanel;
   private LogContextMenu contextMenu;
 
@@ -168,7 +171,12 @@ public final class GitLogView extends ViewPart {
     }, () -> myEmail);
     rightSide = new SashForm(mainSash, SWT.VERTICAL);
     files = new CommitFilesTree(rightSide);
-    files.viewer().addDoubleClickListener(e -> openSelectedFiles());
+    files.viewer().addDoubleClickListener(e -> {
+      if (files.onlyFilesSelected()) {
+        showDiff(files.selectedFiles());
+      }
+    });
+    installFilesMenu();
     detailsPanel = new CommitDetailsPanel(rightSide);
     rightSide.setWeights(50, 50);
     mainSash.setWeights(70, 30);
@@ -438,11 +446,13 @@ public final class GitLogView extends ViewPart {
     List<String> hashes = table.selectedHashes();
     int generation = ++selectionGeneration;
     if (hashes.isEmpty()) {
+      filesCommit = null;
       files.setFiles(List.of());
       detailsPanel.clear();
       return;
     }
     if (hashes.size() > 1) {
+      filesCommit = null;
       files.setFiles(List.of());
       List<CommitDetails> known = hashes.stream().map(details::get).filter(d -> d != null).toList();
       detailsPanel.showMany(known);
@@ -463,6 +473,8 @@ public final class GitLogView extends ViewPart {
         CommitDetails loaded = d != null ? d : detailsLoader.load(repo, List.of(hash)).get(hash);
         asyncExec(() -> {
           if (generation == selectionGeneration) {
+            filesCommit = hash;
+            filesParents = loaded != null ? loaded.parents() : List.of();
             files.setFiles(changed);
             if (loaded != null) {
               details.put(hash, loaded);
@@ -512,7 +524,60 @@ public final class GitLogView extends ViewPart {
     return new ArrayList<>(names);
   }
 
-  private void openSelectedFiles() {
+  /** The context menu and the keys of the commit file tree: Show Diff (Ctrl+D) and Jump to Source (F4). */
+  private void installFilesMenu() {
+    org.eclipse.swt.widgets.Control control = files.viewer().getControl();
+    org.eclipse.jface.action.MenuManager manager = new org.eclipse.jface.action.MenuManager();
+    manager.setRemoveAllWhenShown(true);
+    manager.addMenuListener(menu -> {
+      List<FileChange> selected = files.selectedFiles();
+      menu.add(menuAction("Show Diff\tCtrl+D", !selected.isEmpty(), () -> showDiff(selected)));
+      menu.add(menuAction("Jump to Source\tF4", !selected.isEmpty(), this::openSelectedFiles));
+    });
+    control.setMenu(manager.createContextMenu(control));
+    control.addListener(SWT.KeyDown, e -> {
+      if (e.keyCode == 'd' && (e.stateMask & SWT.MODIFIER_MASK) == SWT.MOD1) {
+        showDiff(files.selectedFiles());
+        e.doit = false;
+      }
+      else if (e.keyCode == SWT.F4 && (e.stateMask & SWT.MODIFIER_MASK) == 0) {
+        openSelectedFiles();
+        e.doit = false;
+      }
+    });
+  }
+
+  private static org.eclipse.jface.action.Action menuAction(String text, boolean enabled, Runnable run) {
+    org.eclipse.jface.action.Action action = new org.eclipse.jface.action.Action(text) {
+      @Override
+      public void run() {
+        run.run();
+      }
+    };
+    action.setEnabled(enabled);
+    return action;
+  }
+
+  /**
+   * Opens the diff of the selected files of the shown commit against its first parent. One selected file starts a
+   * chain of all files of the commit, several selected files make the chain themselves.
+   */
+  void showDiff(List<FileChange> selected) {
+    GitRepository repo = loadedRepository;
+    String hash = filesCommit;
+    if (repo == null || hash == null || selected.isEmpty()) {
+      return;
+    }
+    List<String> parents = filesParents;
+    List<FileChange> chainFiles = selected.size() > 1 ? selected : files.filesInTreeOrder();
+    List<gitbench.diff.DiffRequest> chain = chainFiles.stream()
+      .map(c -> gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, c)).toList();
+    gitbench.diff.DiffRequest first = gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, selected.get(0));
+    gitbench.ui.diff.DiffOpener.open(getSite().getPage(), chain, gitbench.diff.DiffRequests.chain(chain, first));
+  }
+
+  /** Jump to Source: opens the working tree files of the selected commit files. */
+  void openSelectedFiles() {
     gitbench.ui.commit.OpenFiles.open(getSite().getPage(), context.current(), files.selectedFiles());
   }
 

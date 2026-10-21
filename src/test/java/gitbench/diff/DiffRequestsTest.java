@@ -70,4 +70,15 @@ class DiffRequestsTest {
     assertThat(request.left()).isEqualTo(new DiffSide.Revision("p1", "a.c"));
     assertThat(request.right()).isInstanceOf(DiffSide.Empty.class);
   }
+
+  @Test
+  void chainStartsAtSelectedFile() {
+    DiffRequest a = DiffRequests.forLocalChange(repo, new FileChange("a.c", null, ChangeKind.MODIFIED));
+    DiffRequest b = DiffRequests.forLocalChange(repo, new FileChange("b.c", null, ChangeKind.MODIFIED));
+    DiffRequest c = DiffRequests.forLocalChange(repo, new FileChange("c.c", null, ChangeKind.MODIFIED));
+
+    assertThat(DiffRequests.chain(List.of(a, b, c), b)).isEqualTo(1);
+    assertThat(DiffRequests.chain(List.of(a, b, c), DiffRequests.forLocalChange(repo, new FileChange("x.c", null, ChangeKind.MODIFIED))))
+      .isEqualTo(0);
+  }
 }

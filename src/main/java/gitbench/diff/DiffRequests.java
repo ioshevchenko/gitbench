@@ -25,6 +25,11 @@ public final class DiffRequests {
     return new DiffRequest(repository, change.path(), left, right);
   }
 
+  /** The index of the selected request in the chain, where the diff tab starts; 0 when the chain does not hold it. */
+  public static int chain(List<DiffRequest> all, DiffRequest selected) {
+    return Math.max(0, all.indexOf(selected));
+  }
+
   /** A file of a commit: the first parent on the left, the commit on the right. A root commit has nothing on the left. */
   public static DiffRequest forCommitFile(GitRepository repository, String hash, List<String> parents, FileChange change) {
     String leftPath = change.origPath() != null ? change.origPath() : change.path();

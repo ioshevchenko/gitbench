@@ -115,7 +115,11 @@ public final class CommitView extends ViewPart {
     sash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
     tree = new ChangesTreeViewer(sash, inclusion, this::updateButtons);
     tree.viewer().addSelectionChangedListener(e -> updateActions());
-    tree.viewer().addDoubleClickListener(e -> OpenFiles.open(getSite().getPage(), currentRepository(), tree.selectedChanges()));
+    tree.viewer().addDoubleClickListener(e -> {
+      if (tree.onlyFilesSelected()) {
+        showDiff(tree.selectedChanges());
+      }
+    });
     panel = new CommitPanel(sash, new CommitPanel.Listener() {
       @Override
       public void commit(boolean andPush) {
@@ -222,6 +226,21 @@ public final class CommitView extends ViewPart {
     });
     refreshJob.setSystem(true);
     refreshJob.schedule();
+  }
+
+  /**
+   * Opens the diff of the selected files, as IntelliJ Show Diff: one selected file starts a chain of all files in the
+   * tree, several selected files make the chain themselves.
+   */
+  void showDiff(List<FileChange> selected) {
+    Optional<GitRepository> repository = currentRepository();
+    if (repository.isEmpty() || selected.isEmpty()) {
+      return;
+    }
+    List<FileChange> files = selected.size() > 1 ? selected : tree.changesInTreeOrder();
+    List<gitbench.diff.DiffRequest> chain = files.stream().map(c -> gitbench.diff.DiffRequests.forLocalChange(repository.get(), c)).toList();
+    gitbench.diff.DiffRequest first = gitbench.diff.DiffRequests.forLocalChange(repository.get(), selected.get(0));
+    gitbench.ui.diff.DiffOpener.open(getSite().getPage(), chain, gitbench.diff.DiffRequests.chain(chain, first));
   }
 
   Optional<GitRepository> currentRepository() {

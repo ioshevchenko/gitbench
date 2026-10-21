@@ -14,6 +14,10 @@ import java.util.List;
  */
 record DiffContent(IDocument left, IDocument right, String leftTitle, String rightTitle, boolean rightEditable,
                    boolean localChanges, Path file, DiffText leftText, DiffText rightText, List<DiffChange> changes) {
+  DiffContent withLeftTitle(String newLeftTitle) {
+    return new DiffContent(left, right, newLeftTitle, rightTitle, rightEditable, localChanges, file, leftText, rightText, changes);
+  }
+
   DiffContent withChanges(DiffText newLeft, DiffText newRight, List<DiffChange> newChanges) {
     return new DiffContent(left, right, leftTitle, rightTitle, rightEditable, localChanges, file, newLeft, newRight, newChanges);
   }
