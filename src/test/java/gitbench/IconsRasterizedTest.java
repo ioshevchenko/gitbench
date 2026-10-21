@@ -25,9 +25,13 @@ class IconsRasterizedTest {
     }
     assertThat(names).isNotEmpty();
     for (String theme : List.of("light", "dark")) {
-      for (String name : names) {
-        assertSize(pngDir.resolve(theme).resolve(name + ".png"), 16);
-        assertSize(pngDir.resolve(theme).resolve(name + "@2x.png"), 32);
+      for (String svgName : names) {
+        // An IntelliJ size suffix such as @14x14 sets the size and is dropped from the PNG name.
+        int at = svgName.indexOf('@');
+        String name = at < 0 ? svgName : svgName.substring(0, at);
+        int size = at < 0 ? 16 : Integer.parseInt(svgName.substring(at + 1, svgName.indexOf('x', at)));
+        assertSize(pngDir.resolve(theme).resolve(name + ".png"), size);
+        assertSize(pngDir.resolve(theme).resolve(name + "@2x.png"), size * 2);
       }
     }
   }
