@@ -7,6 +7,11 @@ import gitbench.git.FileChange;
 import gitbench.git.GitException;
 import gitbench.git.GitRepository;
 import gitbench.git.GitRunner;
+import gitbench.git.OutgoingCommit;
+import gitbench.git.PushResult;
+import gitbench.git.PushService;
+import gitbench.git.PushTarget;
+import gitbench.ui.push.PushDialog;
 import gitbench.git.RepositoryLocator;
 import gitbench.git.RollbackService;
 import gitbench.git.StatusService;
@@ -309,8 +314,42 @@ public final class CommitView extends ViewPart {
                                       MESSAGE_HISTORY_SIZE);
   }
 
-  /** Opens the Push dialog. Task 9 fills it. */
+  /** Opens the Push dialog after a commit and runs the push the user confirms. */
   private void openPushDialog(GitRepository repo) {
+    PushService pushService = new PushService(Activator.getDefault().gitRunner());
+    PushTarget target;
+    List<OutgoingCommit> outgoing;
+    try {
+      target = pushService.defaultTarget(repo);
+      outgoing = pushService.outgoing(repo, target);
+    }
+    catch (GitException e) {
+      MessageDialog.openError(getSite().getShell(), "Push", e.userMessage());
+      return;
+    }
+    PushDialog dialog = new PushDialog(getSite().getShell(), repo, pushService, target, outgoing);
+    if (dialog.open() != IDialogConstants.OK_ID) {
+      return;
+    }
+    PushTarget chosen = dialog.chosenTarget();
+    Job job = Job.create("Pushing to " + chosen.remote(), monitor -> {
+      try {
+        PushResult result = pushService.push(repo, chosen);
+        String text = PushDialog.describe(result, outgoing.size(), chosen);
+        asyncExec(() -> {
+          switch (result.status()) {
+            case OK, UP_TO_DATE -> getViewSite().getActionBars().getStatusLineManager().setMessage(text);
+            case REJECTED -> MessageDialog.openWarning(getSite().getShell(), "Push Rejected", text);
+            case ERROR -> MessageDialog.openError(getSite().getShell(), "Push Failed", text);
+          }
+        });
+      }
+      catch (GitException e) {
+        asyncExec(() -> MessageDialog.openError(getSite().getShell(), "Push Failed", e.userMessage()));
+      }
+      return Status.OK_STATUS;
+    });
+    job.schedule();
   }
 
   private void onAmendChanged(boolean amend) {

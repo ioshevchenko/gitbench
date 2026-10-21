@@ -19,15 +19,45 @@ public final class TempRepo {
     try {
       TempRepo repo = new TempRepo(Files.createTempDirectory("gitbench-repo").toRealPath());
       repo.git("init", "-q", "-b", "main");
-      repo.git("config", "user.name", "Test User");
-      repo.git("config", "user.email", "test@example.com");
-      repo.git("config", "commit.gpgsign", "false");
-      repo.git("config", "core.autocrlf", "false");
+      repo.configure();
       return repo;
     }
     catch (IOException e) {
       throw new IllegalStateException(e);
     }
+  }
+
+  /** Creates a bare repository that serves as a remote. */
+  public static TempRepo initBare() {
+    try {
+      TempRepo repo = new TempRepo(Files.createTempDirectory("gitbench-remote").toRealPath());
+      repo.git("init", "-q", "--bare", "-b", "main");
+      return repo;
+    }
+    catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /** Clones {@code remote} into a new temporary folder. */
+  public static TempRepo cloneOf(TempRepo remote) {
+    try {
+      Path dir = Files.createTempDirectory("gitbench-clone").toRealPath();
+      runGit(dir, "clone", "-q", remote.root().toString(), ".");
+      TempRepo repo = new TempRepo(dir);
+      repo.configure();
+      return repo;
+    }
+    catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private void configure() {
+    git("config", "user.name", "Test User");
+    git("config", "user.email", "test@example.com");
+    git("config", "commit.gpgsign", "false");
+    git("config", "core.autocrlf", "false");
   }
 
   public Path root() {
