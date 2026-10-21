@@ -24,6 +24,7 @@ public final class LogModel {
   private final PermanentGraph<Integer> permanent;
   private final VisibleGraph<Integer> visible;
   private final boolean intelliSort;
+  private java.util.function.Predicate<Integer> currentBranchCondition;
 
   private LogModel(CommitTopology topology, Map<Integer, List<GitRef>> refsByCommit, PermanentGraph<Integer> permanent,
                    VisibleGraph<Integer> visible, boolean intelliSort) {
@@ -101,6 +102,23 @@ public final class LogModel {
   /** Returns the {@link CommitIndex} id of the commit, or -1. Filters take these ids. */
   public int commitIndexOf(String hash) {
     return topology.index().indexOf(hash);
+  }
+
+  /**
+   * True when the commit is reachable from HEAD. The log paints other commits paler, as the IntelliJ
+   * "current branch" highlighter does. Without HEAD every commit counts as in the branch.
+   */
+  public boolean inCurrentBranch(int commitIndex) {
+    if (permanent == null) {
+      return true;
+    }
+    if (currentBranchCondition == null) {
+      Integer head = refsByCommit.entrySet().stream()
+        .filter(e -> e.getValue().stream().anyMatch(ref -> ref.type() == RefType.HEAD))
+        .map(Map.Entry::getKey).findFirst().orElse(null);
+      currentBranchCondition = head == null ? id -> true : permanent.getContainedInBranchCondition(List.of(head));
+    }
+    return currentBranchCondition.test(commitIndex);
   }
 
   /** The number of graph columns IntelliJ suggests for this graph. */

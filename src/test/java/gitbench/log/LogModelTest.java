@@ -113,6 +113,19 @@ class LogModelTest {
   }
 
   @Test
+  void commitsOfOtherBranchesAreNotInCurrentBranch() throws Exception {
+    TempRepo repo = mergeRepo();
+    repo.git("switch", "-q", "-c", "side", "HEAD~2");
+    repo.write("s.c", "s\n");
+    repo.commitAllAt("side only", T + 40);
+    repo.git("switch", "-q", "main");
+    LogModel model = model(repo, true);
+    assertThat(model.inCurrentBranch(model.commitIndexOf(rev(repo, "main")))).isTrue();
+    assertThat(model.inCurrentBranch(model.commitIndexOf(rev(repo, "feature")))).isTrue();
+    assertThat(model.inCurrentBranch(model.commitIndexOf(rev(repo, "side")))).isFalse();
+  }
+
+  @Test
   void rowOfUnknownHashIsMinusOne() throws Exception {
     assertThat(model(mergeRepo(), true).rowOf("0000000000000000000000000000000000000000")).isEqualTo(-1);
   }

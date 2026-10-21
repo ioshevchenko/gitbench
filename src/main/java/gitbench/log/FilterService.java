@@ -52,6 +52,14 @@ public final class FilterService {
     return result;
   }
 
+  /** Returns the commits reachable from {@code includeRef} and not from {@code excludeRef}: Compare with Current. */
+  public Set<String> range(GitRepository repo, String excludeRef, String includeRef) throws GitException {
+    String out = runner.runOk(repo.root(), List.of("log", "--format=%H", includeRef, "--not", excludeRef, "--"), null);
+    Set<String> result = new LinkedHashSet<>();
+    out.lines().filter(line -> !line.isBlank()).forEach(result::add);
+    return result;
+  }
+
   private List<String> log(GitRepository repo, LogFilter filter, List<String> extra) throws GitException {
     List<String> args = new ArrayList<>(List.of("log", "--format=%H"));
     args.addAll(extra);

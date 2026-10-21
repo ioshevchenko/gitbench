@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.Optional;
 
 /** Opens changed files in editors. Deleted files have nothing to open and are skipped. */
-final class OpenFiles {
+public final class OpenFiles {
   private OpenFiles() {
   }
 
-  static void open(IWorkbenchPage page, Optional<GitRepository> repository, List<FileChange> changes) {
+  public static void open(IWorkbenchPage page, Optional<GitRepository> repository, List<FileChange> changes) {
     if (repository.isEmpty()) {
       return;
     }

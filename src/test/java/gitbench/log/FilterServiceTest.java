@@ -117,6 +117,16 @@ class FilterServiceTest {
   }
 
   @Test
+  void rangeListsCommitsOfBranchNotInCurrent() throws Exception {
+    TempRepo repo = repo();
+    repo.git("switch", "-q", "-c", "side", "HEAD~1");
+    repo.write("s.c", "s\n");
+    repo.commitAllAt("side work", T + 7 * DAY);
+    assertThat(service.range(new GitRepository(repo.root()), "main", "side")).containsExactly(rev(repo, "side"));
+    assertThat(service.range(new GitRepository(repo.root()), "side", "main")).containsExactly(rev(repo, "main"));
+  }
+
+  @Test
   void noCommitFilterReturnsNull() throws Exception {
     TempRepo repo = repo();
     LogFilter onlyBranch = new LogFilter(null, false, false, List.of("main"), List.of(), null, null, List.of());

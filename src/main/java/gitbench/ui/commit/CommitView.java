@@ -80,6 +80,11 @@ public final class CommitView extends ViewPart {
   private Job delayedRefresh;
   private IResourceChangeListener resourceListener;
   private IPartListener2 activationListener;
+  private final java.util.function.Consumer<GitRepository> repositoryListener = repository -> asyncExec(() -> {
+    if (context.current().equals(Optional.of(repository))) {
+      refresh();
+    }
+  });
 
   @Override
   public void createPartControl(Composite parent) {
@@ -138,6 +143,7 @@ public final class CommitView extends ViewPart {
       refresh();
     });
     listenToChanges();
+    gitbench.ui.RepositoryEvents.listen(repositoryListener);
     updateRepositoryCombo();
     refresh();
   }
@@ -161,6 +167,7 @@ public final class CommitView extends ViewPart {
     if (delayedRefresh != null) {
       delayedRefresh.cancel();
     }
+    gitbench.ui.RepositoryEvents.unlisten(repositoryListener);
     if (context != null) {
       context.dispose();
     }
@@ -248,6 +255,7 @@ public final class CommitView extends ViewPart {
         asyncExec(() -> MessageDialog.openError(getSite().getShell(), name, e.userMessage()));
       }
       WorkspaceSync.refresh(repository.get());
+      gitbench.ui.RepositoryEvents.fire(repository.get());
       asyncExec(this::refresh);
       return Status.OK_STATUS;
     });
@@ -300,6 +308,7 @@ public final class CommitView extends ViewPart {
 
   private void afterCommit(GitRepository repo, String message, int fileCount, boolean andPush) {
     onCommitted(message);
+    gitbench.ui.RepositoryEvents.fire(repo);
     panel.afterCommit();
     String subject = message.strip().lines().findFirst().orElse("");
     getViewSite().getActionBars().getStatusLineManager()
@@ -369,6 +378,7 @@ public final class CommitView extends ViewPart {
     Job job = Job.create("Pushing to " + chosen.remote(), monitor -> {
       try {
         PushResult result = pushService.push(repo, chosen);
+        gitbench.ui.RepositoryEvents.fire(repo);
         String text = PushDialog.describe(result, outgoing.size(), chosen);
         asyncExec(() -> {
           switch (result.status()) {

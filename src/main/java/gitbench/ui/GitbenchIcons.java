@@ -12,7 +12,9 @@ import java.util.Locale;
 public final class GitbenchIcons {
   public enum Icon {
     REFRESH, ROLLBACK, VIEW_OPTIONS, EXPAND_ALL, COLLAPSE_ALL, HISTORY, SETTINGS, COMMIT_TOOL_WINDOW, PUSH, FOLDER,
-    UNVERSIONED_FILES;
+    UNVERSIONED_FILES,
+    VCS, FETCH, SEARCH, REGEX, MATCH_CASE, CURRENT_BRANCH_LABEL, BRANCH_LABEL, CURRENT_BRANCH_FAVORITE_LABEL, SORT, CLOSE,
+    CHEVRON_DOWN;
 
     /** The file name without the extension: {@code VIEW_OPTIONS} → {@code viewOptions}. */
     String fileName() {
