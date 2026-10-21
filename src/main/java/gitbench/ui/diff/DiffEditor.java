@@ -73,6 +73,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   private int diffGeneration;
   private int documentVersion;
   private int comparedVersion = -1;
+  /** A line of the right side to show after the next comparison, or -1. */
+  private int pendingReveal = -1;
   /** The document version of the last started comparison; the typing timer skips a version already compared. */
   private int requestedVersion = -1;
   private boolean rediffScheduled;
@@ -441,6 +443,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
           pane.setContent(content);
           toolbar.setCount(result.size(), null);
           setBanner(bannerText);
+          revealPending();
         }
       });
       return Status.OK_STATUS;
@@ -599,6 +602,31 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   @Override
   public void contentChanged() {
     scheduleRediff();
+  }
+
+  /**
+   * Shows the block that holds this line of the right side, or the next block below it, as IntelliJ Show Diff for
+   * Lines does. When the comparison is not done yet, the block shows after it.
+   */
+  public void revealRightLine(int line) {
+    pendingReveal = line;
+    if (content != null && pane != null && comparedVersion == documentVersion) {
+      revealPending();
+    }
+  }
+
+  private void revealPending() {
+    if (pendingReveal < 0 || content == null || pane == null) {
+      return;
+    }
+    int line = pendingReveal;
+    pendingReveal = -1;
+    for (DiffChange change : content.changes()) {
+      if (Math.max(change.endLine2(), change.startLine2() + 1) > line) {
+        pane.reveal(change);
+        return;
+      }
+    }
   }
 
   // DiffToolbar.Actions

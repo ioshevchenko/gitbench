@@ -202,8 +202,63 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     }
   }
 
-  /** Task 4 opens the popup of the marker here. */
   private void mouseDown(Event e) {
+    if (e.button != 1) {
+      return;
+    }
+    int index = ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y);
+    if (index >= 0) {
+      openPopup(index);
+    }
+  }
+
+  /** Opens the popup of the range under its marker, as a click on the marker does. */
+  void openPopup(int index) {
+    if (tracker == null || index < 0 || index >= tracker.ranges().size()) {
+      return;
+    }
+    gitbench.diff.DiffChange range = tracker.ranges().get(index);
+    int y = geometry.top(range.endLine2());
+    if (range.startLine2() == range.endLine2()) {
+      y += geometry.lineHeight() / 2;
+    }
+    org.eclipse.swt.graphics.Point location = canvas.toDisplay(ChangeMarkerPainter.WIDTH, y);
+    new ChangeMarkerPopup(canvas.getShell(), tracker.document(), tracker, index, location, new ChangeMarkerPopup.Actions() {
+      @Override
+      public void showDiff(int documentLine) {
+        ChangeMarkerColumn.this.showDiff(documentLine);
+      }
+
+      @Override
+      public void reveal(int documentLine) {
+        revealLine(documentLine);
+      }
+    });
+  }
+
+  /** Moves the caret to the start of the document line and scrolls to it. */
+  void revealLine(int line) {
+    try {
+      IDocument document = tracker.document();
+      int offset = document.getLineOffset(Math.min(line, document.getNumberOfLines() - 1));
+      getEditor().selectAndReveal(offset, 0);
+    }
+    catch (org.eclipse.jface.text.BadLocationException e) {
+      // The document got shorter; there is nothing to show.
+    }
+  }
+
+  /** Show Diff for Lines: the diff of the file against HEAD at this block, as the Commit view opens it. */
+  private void showDiff(int line) {
+    LineStatusBase.Key current = key;
+    if (current == null || tracker == null) {
+      return;
+    }
+    gitbench.git.ChangeKind kind = tracker.base().map(String::isEmpty).orElse(false)
+                                   ? gitbench.git.ChangeKind.ADDED : gitbench.git.ChangeKind.MODIFIED;
+    gitbench.diff.DiffRequest request =
+      gitbench.diff.DiffRequests.forLocalChange(current.repository(), new gitbench.git.FileChange(current.path(), null, kind));
+    gitbench.ui.diff.DiffOpener.open(getEditor().getSite().getPage(), java.util.List.of(request), 0, line);
   }
 
   @Override
