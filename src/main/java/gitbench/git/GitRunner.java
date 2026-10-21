@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 public final class GitRunner {
   /** Paths from the UI are file names, never glob patterns, so every pathspec is literal. */
   private static final List<String> FIXED_OPTIONS =
-    List.of("--literal-pathspecs", "-c", "core.quotepath=false", "-c", "color.ui=false");
+    List.of("--literal-pathspecs", "-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "log.showSignature=false");
 
   private final Supplier<String> gitPath;
   private final GitCommandListener listener;

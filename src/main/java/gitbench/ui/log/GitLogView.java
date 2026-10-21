@@ -92,6 +92,10 @@ public final class GitLogView extends ViewPart {
   private Range range;
   private final Map<String, CommitDetails> details = new ConcurrentHashMap<>();
   private final Set<String> pendingDetails = ConcurrentHashMap.newKeySet();
+  /** "In N branches" per commit; cleared when the refs change. */
+  private final Map<String, List<String>> branchesOfCommit = new ConcurrentHashMap<>();
+  private static final int SELECTION_DELAY_MS = 150;
+  private int selectionDelayGeneration;
   private int loadGeneration;
   private int filterGeneration;
   private int selectionGeneration;
@@ -170,7 +174,7 @@ public final class GitLogView extends ViewPart {
     mainSash.setWeights(70, 30);
     updateRightSide();
 
-    table.table().addListener(SWT.Selection, e -> showSelection());
+    table.table().addListener(SWT.Selection, e -> scheduleShowSelection());
     table.table().addListener(SWT.KeyDown, this::onKey);
     contextMenu = new LogContextMenu(this);
     contextMenu.install(table.table());
@@ -229,8 +233,12 @@ public final class GitLogView extends ViewPart {
   /** Compare with Current: shows the commits of {@code includeRef} that are not in {@code excludeRef}. */
   public void showRange(String excludeRef, String includeRef) {
     range = new Range(excludeRef, includeRef);
-    filterBar.setRange(excludeRef + ".." + includeRef);
+    filterBar.setRange(shortName(excludeRef) + ".." + shortName(includeRef));
     applyFilter();
+  }
+
+  private static String shortName(String ref) {
+    return ref.replaceFirst("^refs/heads/", "").replaceFirst("^refs/remotes/", "").replaceFirst("^refs/tags/", "");
   }
 
   public LogFilter currentFilter() {
@@ -290,12 +298,18 @@ public final class GitLogView extends ViewPart {
           refs = newRefs;
           fullModel = model;
           myEmail = email;
+          branchesOfCommit.clear();
           setContentDescription("");
           applyFilter();
         });
       }
       catch (GitException e) {
         asyncExec(() -> setContentDescription(e.userMessage()));
+      }
+      catch (RuntimeException e) {
+        // Unexpected git output must not leave an empty log without a word.
+        Activator.getDefault().getLog().error("Cannot load the Git log", e);
+        asyncExec(() -> setContentDescription("Cannot load the Git log: " + e));
       }
       return Status.OK_STATUS;
     });
@@ -356,6 +370,10 @@ public final class GitLogView extends ViewPart {
       catch (GitException e) {
         asyncExec(() -> setContentDescription(e.userMessage()));
       }
+      catch (RuntimeException e) {
+        Activator.getDefault().getLog().error("Cannot filter the Git log", e);
+        asyncExec(() -> setContentDescription("Cannot filter the Git log: " + e));
+      }
       return Status.OK_STATUS;
     });
     job.setSystem(true);
@@ -373,7 +391,7 @@ public final class GitLogView extends ViewPart {
     int to = Math.min(model.rowCount(), from + DETAILS_BATCH);
     List<String> missing = new ArrayList<>();
     for (int i = from; i < to; i++) {
-      String hash = model.row(i).hash();
+      String hash = model.hashAt(i);
       if (!details.containsKey(hash) && pendingDetails.add(hash)) {
         missing.add(hash);
       }
@@ -393,12 +411,26 @@ public final class GitLogView extends ViewPart {
       }
       asyncExec(() -> {
         table.table().redraw();
-        showSelection();
+        // Refresh the panel only when this batch brought the selected commit; otherwise it would flicker.
+        List<String> selected = table.selectedHashes();
+        if (selected.size() == 1 && missing.contains(selected.get(0)) && details.containsKey(selected.get(0))) {
+          detailsPanel.show(details.get(selected.get(0)), branchesOfCommit.get(selected.get(0)));
+        }
       });
       return Status.OK_STATUS;
     });
     job.setSystem(true);
     job.schedule();
+  }
+
+  /** Waits a moment before the git calls for the selection, so that holding an arrow key does not start one per row. */
+  private void scheduleShowSelection() {
+    int generation = ++selectionDelayGeneration;
+    display.timerExec(SELECTION_DELAY_MS, () -> {
+      if (generation == selectionDelayGeneration && !table.table().isDisposed()) {
+        showSelection();
+      }
+    });
   }
 
   /** Updates the files and the details panel for the selected commits. */
@@ -438,7 +470,9 @@ public final class GitLogView extends ViewPart {
             }
           }
         });
-        List<String> branches = containingBranches(repo, hash);
+        List<String> cached = branchesOfCommit.get(hash);
+        List<String> branches = cached != null ? cached : containingBranches(repo, hash);
+        branchesOfCommit.put(hash, branches);
         asyncExec(() -> {
           if (generation == selectionGeneration && loaded != null) {
             detailsPanel.show(loaded, branches);

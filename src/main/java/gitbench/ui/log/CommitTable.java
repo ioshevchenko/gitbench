@@ -47,6 +47,12 @@ final class CommitTable {
   private final GraphPainter graphPainter = new GraphPainter();
   private final Font boldFont;
   private LogModel model;
+  private int missingFrom = Integer.MAX_VALUE;
+  private int missingTo = -1;
+  private boolean requestScheduled;
+  /** Theme.isDark() reads the preference service; read it at most once a second, not once per cell. */
+  private boolean dark;
+  private long darkCheckedAt;
 
   CommitTable(Composite parent, DetailsSource details, Supplier<String> myEmail) {
     this.details = details;
@@ -66,7 +72,8 @@ final class CommitTable {
       int width = table.getClientArea().width - AUTHOR_WIDTH - DATE_WIDTH;
       subject.setWidth(Math.max(width, 100));
     });
-    table.addListener(SWT.SetData, e -> ((TableItem)e.item).setData(table.indexOf((TableItem)e.item)));
+    table.addListener(SWT.SetData, e -> { });
+
     table.addListener(SWT.MeasureItem, e -> e.height = ROW_HEIGHT);
     table.addListener(SWT.EraseItem, e -> e.detail &= ~SWT.FOREGROUND);
     table.addListener(SWT.PaintItem, this::paint);
@@ -143,21 +150,26 @@ final class CommitTable {
     if (rowIndex < 0 || rowIndex >= model.rowCount()) {
       return;
     }
-    LogRow row = model.row(rowIndex);
-    CommitDetails d = details.get(row.hash());
+    // Only the subject column needs the graph elements; the other columns need just the hash.
+    LogRow row = event.index == 0 ? model.row(rowIndex) : null;
+    String hash = row != null ? row.hash() : model.hashAt(rowIndex);
+    CommitDetails d = details.get(hash);
     if (d == null) {
-      details.request(rowIndex, rowIndex + 1);
+      scheduleDetailsRequest(rowIndex);
     }
     GC gc = event.gc;
     Rectangle cell = item.getBounds(event.index);
+    // A selection without focus is light gray on Windows: keep the normal text color there.
     boolean selected = (event.detail & SWT.SELECTED) != 0;
-    boolean dark = Theme.isDark();
-    Color normal = selected ? table.getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION_TEXT) : table.getForeground();
+    boolean focusedSelection = selected && table.isFocusControl();
+    boolean dark = isDark();
+    Color normal = focusedSelection ? table.getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION_TEXT) : table.getForeground();
     Color pale = table.getDisplay().getSystemColor(SWT.COLOR_WIDGET_DISABLED_FOREGROUND);
-    Color text = selected || model.inCurrentBranch(row.commitIndex()) ? normal : pale;
+    int commitIndex = row != null ? row.commitIndex() : model.commitIndexOf(hash);
+    Color text = focusedSelection || model.inCurrentBranch(commitIndex) ? normal : pale;
     gc.setForeground(text);
     switch (event.index) {
-      case 0 -> paintSubject(gc, cell, row, d, selected, dark, pale);
+      case 0 -> paintSubject(gc, cell, row, d, focusedSelection, selected, dark, pale);
       case 1 -> {
         boolean mine = d != null && d.authorEmail().equalsIgnoreCase(String.valueOf(myEmail.get()));
         gc.setFont(mine ? boldFont : table.getFont());
@@ -170,9 +182,42 @@ final class CommitTable {
     }
   }
 
-  private void paintSubject(GC gc, Rectangle cell, LogRow row, CommitDetails d, boolean selected, boolean dark, Color pale) {
+  /**
+   * Collects the rows with missing details during one paint pass and asks for them once, after the pass.
+   * A request per painted cell would run on the UI thread for every cell.
+   */
+  private boolean isDark() {
+    long now = System.currentTimeMillis();
+    if (now - darkCheckedAt > 1000) {
+      dark = Theme.isDark();
+      darkCheckedAt = now;
+    }
+    return dark;
+  }
+
+  private void scheduleDetailsRequest(int row) {
+    missingFrom = Math.min(missingFrom, row);
+    missingTo = Math.max(missingTo, row);
+    if (!requestScheduled) {
+      requestScheduled = true;
+      table.getDisplay().asyncExec(() -> {
+        requestScheduled = false;
+        int from = missingFrom;
+        int to = missingTo;
+        missingFrom = Integer.MAX_VALUE;
+        missingTo = -1;
+        if (!table.isDisposed() && to >= from) {
+          details.request(from, to + 1);
+        }
+      });
+    }
+  }
+
+  private void paintSubject(GC gc, Rectangle cell, LogRow row, CommitDetails d, boolean selected, boolean anySelection,
+                            boolean dark, Color pale) {
     int graphWidth = GraphPainter.width(model.recommendedWidth(), cell.height);
-    Color background = selected ? table.getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION) : table.getBackground();
+    Color background = selected ? table.getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION)
+                                : anySelection ? table.getDisplay().getSystemColor(SWT.COLOR_WIDGET_LIGHT_SHADOW) : table.getBackground();
     graphPainter.paint(gc, new Rectangle(cell.x, cell.y, graphWidth, cell.height), row.printElements(), dark, background);
     int textX = cell.x + graphWidth + CELL_PADDING;
     int right = cell.x + cell.width - CELL_PADDING;

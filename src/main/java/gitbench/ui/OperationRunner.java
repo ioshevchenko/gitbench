@@ -29,6 +29,22 @@ public final class OperationRunner {
   private OperationRunner() {
   }
 
+  /**
+   * One operation per repository at a time: two git commands that change refs or the index at once fail on
+   * index.lock or packed-refs.lock.
+   */
+  private record RepositoryRule(GitRepository repository) implements org.eclipse.core.runtime.jobs.ISchedulingRule {
+    @Override
+    public boolean contains(org.eclipse.core.runtime.jobs.ISchedulingRule rule) {
+      return equals(rule);
+    }
+
+    @Override
+    public boolean isConflicting(org.eclipse.core.runtime.jobs.ISchedulingRule rule) {
+      return equals(rule);
+    }
+  }
+
   public static void run(IWorkbenchPartSite site, GitRepository repository, String title, Operation operation) {
     run(site, repository, title, operation, result -> { });
   }
@@ -53,6 +69,7 @@ public final class OperationRunner {
       }
       return Status.OK_STATUS;
     });
+    job.setRule(new RepositoryRule(repository));
     job.schedule();
   }
 

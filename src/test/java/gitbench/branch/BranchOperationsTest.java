@@ -67,13 +67,52 @@ class BranchOperationsTest {
   }
 
   @Test
-  void checkoutRemoteWhenLocalExistsUsesLocal() throws Exception {
+  void checkoutRemoteWhenLocalIsBehindFastForwards() throws Exception {
     TempRepo repo = cloneWithRemoteBranch();
-    repo.git("branch", "remote-only", "origin/remote-only");
-    repo.git("switch", "-q", "main");
+    repo.git("branch", "remote-only", "origin/remote-only~1");
     OperationResult result = ops.checkout(new GitRepository(repo.root()), ref(repo, "origin/remote-only"));
     assertThat(result.ok()).isTrue();
     assertThat(current(repo)).isEqualTo("remote-only");
+    assertThat(repo.git("rev-parse", "HEAD").trim()).isEqualTo(repo.git("rev-parse", "origin/remote-only").trim());
+  }
+
+  @Test
+  void checkoutRemoteWhenLocalHasOwnCommitsAsks() throws Exception {
+    TempRepo repo = cloneWithRemoteBranch();
+    repo.git("switch", "-q", "-c", "remote-only", "origin/remote-only~1");
+    repo.write("own.c", "own\n");
+    repo.commitAll("own work");
+    repo.git("switch", "-q", "main");
+    OperationResult result = ops.checkout(new GitRepository(repo.root()), ref(repo, "origin/remote-only"));
+    assertThat(result.ok()).isFalse();
+    assertThat(result.needsForce()).isTrue();
+    assertThat(result.message()).contains("has commits that are not in origin/remote-only");
+    assertThat(current(repo)).isEqualTo("main");
+  }
+
+  @Test
+  void checkoutRemoteAndRebaseLocalCommits() throws Exception {
+    TempRepo repo = cloneWithRemoteBranch();
+    repo.git("switch", "-q", "-c", "remote-only", "origin/remote-only~1");
+    repo.write("own.c", "own\n");
+    repo.commitAll("own work");
+    repo.git("switch", "-q", "main");
+    GitRepository r = new GitRepository(repo.root());
+    assertThat(ops.checkoutRemote(r, ref(repo, "origin/remote-only"), BranchOperations.LocalCommits.REBASE).ok()).isTrue();
+    assertThat(current(repo)).isEqualTo("remote-only");
+    assertThat(repo.git("rev-parse", "HEAD~1").trim()).isEqualTo(repo.git("rev-parse", "origin/remote-only").trim());
+  }
+
+  @Test
+  void checkoutRemoteAndDropLocalCommits() throws Exception {
+    TempRepo repo = cloneWithRemoteBranch();
+    repo.git("switch", "-q", "-c", "remote-only", "origin/remote-only~1");
+    repo.write("own.c", "own\n");
+    repo.commitAll("own work");
+    repo.git("switch", "-q", "main");
+    GitRepository r = new GitRepository(repo.root());
+    assertThat(ops.checkoutRemote(r, ref(repo, "origin/remote-only"), BranchOperations.LocalCommits.DROP).ok()).isTrue();
+    assertThat(repo.git("rev-parse", "HEAD").trim()).isEqualTo(repo.git("rev-parse", "origin/remote-only").trim());
   }
 
   @Test

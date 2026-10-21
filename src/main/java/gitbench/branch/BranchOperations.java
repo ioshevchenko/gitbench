@@ -24,16 +24,47 @@ public final class BranchOperations {
   public OperationResult checkout(GitRepository repo, GitRef ref) throws GitException {
     return switch (ref.type()) {
       case LOCAL_BRANCH -> run(repo, "checkout", List.of("switch", ref.name()));
-      case REMOTE_BRANCH -> {
-        String local = ref.name().substring(ref.name().indexOf('/') + 1);
-        boolean exists = runner.run(repo.root(), List.of("show-ref", "--verify", "-q", "refs/heads/" + local), null).ok();
-        yield exists
-              ? run(repo, "checkout", List.of("switch", local))
-              : run(repo, "checkout", List.of("switch", "-c", local, "--track", ref.name()));
-      }
+      case REMOTE_BRANCH -> checkoutRemoteBranch(repo, ref);
       case TAG -> run(repo, "checkout", List.of("switch", "--detach", ref.name()));
       case HEAD -> OperationResult.success("");
     };
+  }
+
+  /** What to do with the commits of a local branch that are not in the remote branch being checked out. */
+  public enum LocalCommits { REBASE, DROP }
+
+  /** Checks out the local branch of a remote branch after the user chose what to do with its own commits. */
+  public OperationResult checkoutRemote(GitRepository repo, GitRef ref, LocalCommits choice) throws GitException {
+    String local = localNameOf(ref);
+    if (choice == LocalCommits.DROP) {
+      return run(repo, "checkout", List.of("switch", "-C", local, ref.fullName()));
+    }
+    OperationResult checkout = run(repo, "checkout", List.of("switch", local));
+    return checkout.ok() ? run(repo, "rebase", List.of("rebase", ref.fullName())) : checkout;
+  }
+
+  /**
+   * Remote checkout as in IntelliJ: no local branch → a new tracking branch; a local branch that is behind →
+   * checkout and fast-forward; a local branch with its own commits → {@code needsForce}, the user picks
+   * {@link #checkoutRemote} with REBASE or DROP.
+   */
+  private OperationResult checkoutRemoteBranch(GitRepository repo, GitRef ref) throws GitException {
+    String local = localNameOf(ref);
+    String localRef = "refs/heads/" + local;
+    if (!runner.run(repo.root(), List.of("show-ref", "--verify", "-q", localRef), null).ok()) {
+      return run(repo, "checkout", List.of("switch", "-c", local, "--track", ref.fullName()));
+    }
+    boolean localInRemote = runner.run(repo.root(), List.of("merge-base", "--is-ancestor", localRef, ref.fullName()), null).ok();
+    if (!localInRemote) {
+      return new OperationResult(false, false,
+                                 "Local branch '" + local + "' has commits that are not in " + ref.name() + ".", true);
+    }
+    OperationResult checkout = run(repo, "checkout", List.of("switch", local));
+    return checkout.ok() ? run(repo, "checkout", List.of("merge", "--ff-only", ref.fullName())) : checkout;
+  }
+
+  private static String localNameOf(GitRef remoteRef) {
+    return remoteRef.name().substring(remoteRef.name().indexOf('/') + 1);
   }
 
   public OperationResult newBranch(GitRepository repo, String name, String startPoint, boolean checkout, boolean overwrite)

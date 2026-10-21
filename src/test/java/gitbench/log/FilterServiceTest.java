@@ -127,6 +127,14 @@ class FilterServiceTest {
   }
 
   @Test
+  void branchWithSameNameAsDirectory() throws Exception {
+    TempRepo repo = repo();
+    repo.git("branch", "Core");
+    LogFilter filter = new LogFilter("uart", false, false, List.of("Core"), List.of(), null, null, List.of());
+    assertThat(service.matching(new GitRepository(repo.root()), filter)).contains(rev(repo, "HEAD~1"));
+  }
+
+  @Test
   void noCommitFilterReturnsNull() throws Exception {
     TempRepo repo = repo();
     LogFilter onlyBranch = new LogFilter(null, false, false, List.of("main"), List.of(), null, null, List.of());

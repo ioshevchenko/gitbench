@@ -89,6 +89,11 @@ public final class LogModel {
     return new LogRow(topology.index().hashOf(commit), commit, info.getPrintElements(), refsByCommit.getOrDefault(commit, List.of()));
   }
 
+  /** The hash of a row, without computing the graph elements of the row. */
+  public String hashAt(int row) {
+    return topology.index().hashOf(visible.getRowInfo(row).getCommit());
+  }
+
   /** Returns the row of the commit, or -1 when the commit is not visible. */
   public int rowOf(String hash) {
     int index = topology.index().indexOf(hash);

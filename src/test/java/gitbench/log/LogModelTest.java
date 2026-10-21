@@ -135,6 +135,14 @@ class LogModelTest {
   }
 
   @Test
+  void hashAtMatchesRow() throws Exception {
+    LogModel model = model(mergeRepo(), true);
+    for (int i = 0; i < model.rowCount(); i++) {
+      assertThat(model.hashAt(i)).isEqualTo(model.row(i).hash());
+    }
+  }
+
+  @Test
   void rowOfUnknownHashIsMinusOne() throws Exception {
     assertThat(model(mergeRepo(), true).rowOf("0000000000000000000000000000000000000000")).isEqualTo(-1);
   }

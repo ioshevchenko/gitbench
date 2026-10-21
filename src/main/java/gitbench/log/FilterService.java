@@ -78,8 +78,9 @@ public final class FilterService {
     else {
       args.addAll(filter.branches());
     }
+    // Always end the revisions with "--": a branch named like a folder (docs, test) is otherwise ambiguous.
+    args.add("--");
     if (!filter.paths().isEmpty()) {
-      args.add("--");
       args.addAll(filter.paths().subList(0, Math.min(MAX_PATHS, filter.paths().size())));
     }
     GitResult result = runner.run(repo.root(), args, null);
