@@ -1,0 +1,74 @@
+plugins {
+    id 'java'
+}
+
+def cubeIde = file(property('cubeIdeHome'))
+def eclipseBundles = [
+    'org.eclipse.swt_*', 'org.eclipse.swt.win32*', 'org.eclipse.jface_*', 'org.eclipse.jface.text_*',
+    'org.eclipse.ui_*', 'org.eclipse.ui.workbench_*', 'org.eclipse.ui.ide_*', 'org.eclipse.ui.console_*',
+    'org.eclipse.ui.editors_*', 'org.eclipse.ui.workbench.texteditor_*', 'org.eclipse.text_*',
+    'org.eclipse.core.runtime_*', 'org.eclipse.core.resources_*', 'org.eclipse.core.jobs_*',
+    'org.eclipse.core.commands_*', 'org.eclipse.equinox.common_*', 'org.eclipse.equinox.preferences_*',
+    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.e4.ui.*'
+]
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly fileTree(dir: "${cubeIde}/plugins", includes: eclipseBundles.collect { ["${it}.jar", "${it}/**/*.jar"] }.flatten())
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.assertj:assertj-core:3.27.3'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+    options.encoding = 'UTF-8'
+}
+
+def qualifier = new Date().format('yyyyMMddHHmm')
+
+tasks.named('jar') {
+    archiveFileName = "gitbench_${project.version}.${qualifier}.jar"
+    from(projectDir) {
+        include 'plugin.xml', 'NOTICE'
+    }
+    manifest {
+        from('META-INF/MANIFEST.MF') {
+            eachEntry { details ->
+                if (details.key == 'Bundle-Version') {
+                    details.value = details.value.replace('qualifier', qualifier)
+                }
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    systemProperty 'gitbench.projectDir', projectDir.absolutePath
+}
+
+tasks.register('deployDropins') {
+    group = 'gitbench'
+    description = 'Copies the plugin jar into the dropins folder of the configured CubeIDE.'
+    dependsOn 'jar'
+    doLast {
+        def dropins = new File(cubeIde, 'dropins')
+        dropins.mkdirs()
+        dropins.listFiles({ File f -> f.name.startsWith('gitbench_') && f.name.endsWith('.jar') } as FileFilter)?.each { it.delete() }
+        copy {
+            from tasks.named('jar')
+            into dropins
+        }
+        println "Deployed to ${dropins}"
+    }
+}

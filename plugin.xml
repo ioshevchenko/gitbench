@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="org.eclipse.ui.views">
+      <category id="gitbench.category" name="Gitbench"/>
+      <view id="gitbench.views.commit"
+            name="Commit"
+            category="gitbench.category"
+            class="gitbench.ui.commit.CommitView"/>
+   </extension>
+</plugin>
