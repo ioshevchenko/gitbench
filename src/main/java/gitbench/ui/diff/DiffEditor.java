@@ -224,7 +224,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   }
 
   private DiffPane createPane(DiffSettings.Viewer viewer) {
-    return new SplitViewer(body, this, content, Theme.isDark());
+    return viewer == DiffSettings.Viewer.UNIFIED ? new UnifiedViewer(body, this, content, Theme.isDark())
+                                                 : new SplitViewer(body, this, content, Theme.isDark());
   }
 
   private void unload() {
@@ -449,8 +450,12 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   public void viewerChanged(DiffSettings.Viewer viewer) {
     DiffSettings.setViewer(viewer);
     if (content != null) {
+      // Keep the block under the caret in view, as IntelliJ does when the viewer changes.
+      DiffChange current = pane != null ? pane.changeAtCaret() : null;
       createPane();
-      pane.setContent(content);
+      if (current != null) {
+        pane.reveal(current);
+      }
     }
   }
 

@@ -177,8 +177,13 @@ final class SplitViewer implements DiffPane {
     return true;
   }
 
+  @Override
+  public void reveal(DiffChange change) {
+    goTo(change, focused);
+  }
+
   /** Scrolls the block to the middle of the column, as IntelliJ scrollToChange, and puts the caret on its first line. */
-  void goTo(DiffChange change, Side side) {
+  private void goTo(DiffChange change, Side side) {
     SourceViewer viewer = viewer(side);
     StyledText text = viewer.getTextWidget();
     int line = Math.min(change.startLine(side), Math.max(0, text.getLineCount() - 1));

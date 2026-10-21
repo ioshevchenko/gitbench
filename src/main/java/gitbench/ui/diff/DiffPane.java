@@ -26,6 +26,9 @@ interface DiffPane {
   /** Moves the caret to the next or the previous block. Returns false when there is none. */
   boolean navigate(boolean next);
 
+  /** Scrolls the block to the middle and puts the caret on its first line. */
+  void reveal(DiffChange change);
+
   /** The block under the caret, or null. */
   DiffChange changeAtCaret();
 
