@@ -39,6 +39,7 @@ final class UnifiedRuler extends LineNumberRulerColumn {
         max = Math.max(max, (leftSide ? line.leftLine() : line.rightLine()) + 1);
       }
     }
-    return Math.max(2, Integer.toString(max).length());
+    // One more place than the digits: the numbers are right-aligned, so the two columns do not run together.
+    return Math.max(2, Integer.toString(max).length()) + 1;
   }
 }
