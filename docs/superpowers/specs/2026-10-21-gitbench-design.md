@@ -65,7 +65,8 @@ Gitbench — Eclipse-плагин, который повторяет этот и
 - **Java + SWT/JFace**, обычный Eclipse-плагин (OSGi bundle).
 - **Gradle-сборка:** OSGi-манифест пишем вручную (`META-INF/MANIFEST.MF`).
   Зависимости Eclipse для компиляции берём из папки `plugins` установленной
-  CubeIDE. Так версии точно совпадают с IDE. Kotlin не используем.
+  CubeIDE. Так версии точно совпадают с IDE. Kotlin — только в
+  перенесённом коде графа; свой код пишем на Java.
 - **Установка в первой версии:** jar в папку `dropins` у STM32CubeIDE.
   p2 update site — позже.
 - **Git-бэкенд:** git CLI через `ProcessBuilder`, как в IntelliJ.
@@ -73,12 +74,15 @@ Gitbench — Eclipse-плагин, который повторяет этот и
   JGit не используем, чтобы не делить состояние с EGit.
 - **Граф коммитов:** копируем исходники `platform/vcs-log/graph` и
   `platform/vcs-log/graph-api` (около 6 тыс. строк, Java и Kotlin)
-  в плагин. Код на Kotlin переводим на Java. Зависимости от платформы
-  IntelliJ (`ContainerUtil`, `Logger`, `Pair`, `SmartList`, `SLRUMap` и
-  т. п., около 15 классов) заменяем маленькими своими классами. fastutil
-  встраиваем в bundle. Отрисовку `SimpleGraphCellPainter` (Graphics2D)
-  переписываем на SWT `GC`. Цвета линий считаем по формуле
-  `DefaultColorGenerator`.
+  в плагин без изменений. Kotlin-код оставляем на Kotlin, чтобы граф
+  совпадал с IntelliJ точно и проходил оригинальные тесты модуля.
+  Зависимости от платформы IntelliJ (`ContainerUtil`, `Logger`, `Pair`,
+  `SmartList`, `SLRUMap` и т. п., около 15 классов) заменяем маленькими
+  своими классами с теми же именами. kotlin-stdlib и fastutil встраиваем
+  в bundle, лишние классы убирает shadow-плагин. Отрисовку
+  `SimpleGraphCellPainter` (Graphics2D) переписываем на SWT `GC`. Цвета
+  линий считаем по формуле `DefaultColorGenerator`. (Изменено на этапе 2:
+  раньше план был перевести Kotlin на Java.)
 - **Иконки:** SVG из `intellij-community` (`platform/icons/src/expui/**`,
   `platform/dvcs-impl/shared/resources/icons/new/**` и др.), светлые и
   `_dark`. Eclipse 4.33 не умеет SVG, поэтому сборка растеризует их в PNG
