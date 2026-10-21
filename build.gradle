@@ -91,14 +91,18 @@ sourceSets {
     }
 }
 
-def qualifier = new Date().format('yyyyMMddHHmm')
+// The plugin version: gradle.properties for local builds, -Pversion=X.Y.Z from the release tag in CI. OSGi and p2
+// order builds of one version by the qualifier, the build time in UTC.
+def qualifier = new Date().format('yyyyMMddHHmm', TimeZone.getTimeZone('UTC'))
+def bundleVersion = "${project.version}.${qualifier}"
+
 
 tasks.named('jar') {
     enabled = false
 }
 
 tasks.named('shadowJar') {
-    archiveFileName = "gitbench_${project.version}.${qualifier}.jar"
+    archiveFileName = "gitbench_${bundleVersion}.jar"
     from(projectDir) {
         include 'plugin.xml', 'NOTICE', 'LICENSE', 'third_party/LICENSE-APACHE-2.0.txt'
     }
@@ -106,13 +110,17 @@ tasks.named('shadowJar') {
         from('META-INF/MANIFEST.MF') {
             eachEntry { details ->
                 if (details.key == 'Bundle-Version') {
-                    details.value = details.value.replace('qualifier', qualifier)
+                    details.value = bundleVersion
                 }
             }
         }
     }
     minimize()
     exclude 'META-INF/*.kotlin_module', 'META-INF/versions/**', 'META-INF/maven/**'
+    // Each build has a new name; the old jars would pile up in build/libs.
+    doFirst {
+        delete fileTree(destinationDirectory) { include 'gitbench_*.jar' }
+    }
 }
 
 tasks.named('assemble') {
