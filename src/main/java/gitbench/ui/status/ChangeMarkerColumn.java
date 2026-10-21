@@ -51,6 +51,8 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   /** The repository and the path of the file, looked up once per input on the tracker thread. */
   private volatile LineStatusBase.Key key;
   private volatile boolean keySearched;
+  /** Whether HEAD has the file; Show Diff for Lines of an added file has nothing on the left. */
+  private volatile boolean inHead = true;
   private int hovered = -1;
   /** The range under the left button press, or -1. */
   private int pressed = -1;
@@ -158,7 +160,9 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
         keySearched = true;
       }
       LineStatusBase.Key found = key;
-      return found == null ? Optional.empty() : LineStatusBase.load(runner, found, charset);
+      Optional<LineStatusBase.Head> head = found == null ? Optional.empty() : LineStatusBase.load(runner, found, charset);
+      inHead = head.map(LineStatusBase.Head::inHead).orElse(true);
+      return head.map(LineStatusBase.Head::text);
     }
     catch (GitException e) {
       return Optional.empty();
@@ -253,8 +257,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     if (current == null || tracker == null) {
       return;
     }
-    gitbench.git.ChangeKind kind = tracker.base().map(String::isEmpty).orElse(false)
-                                   ? gitbench.git.ChangeKind.ADDED : gitbench.git.ChangeKind.MODIFIED;
+    gitbench.git.ChangeKind kind = inHead ? gitbench.git.ChangeKind.MODIFIED : gitbench.git.ChangeKind.ADDED;
     gitbench.diff.DiffRequest request =
       gitbench.diff.DiffRequests.forLocalChange(current.repository(), new gitbench.git.FileChange(current.path(), null, kind));
     gitbench.ui.diff.DiffOpener.open(getEditor().getSite().getPage(), java.util.List.of(request), 0, line);

@@ -20,6 +20,10 @@ public final class LineStatusBase {
   public record Key(GitRepository repository, String path) {
   }
 
+  /** The HEAD text of a tracked file; {@code inHead} is false for a file that HEAD does not have yet, as an added one. */
+  public record Head(String text, boolean inHead) {
+  }
+
   private LineStatusBase() {
   }
 
@@ -45,20 +49,21 @@ public final class LineStatusBase {
   }
 
   /**
-   * The HEAD text in {@code charset}. Empty for a file git does not track and for a binary file; an empty text for a
-   * tracked file that HEAD does not have yet, as an added file.
+   * The HEAD text in {@code charset}, as the working tree would get it: through the filters of the file, such as
+   * {@code working-tree-encoding} and Git LFS. Empty for a file git does not track and for a binary file; an empty
+   * text that is not in HEAD for a tracked file that HEAD does not have yet, as an added file.
    */
-  public static Optional<String> load(GitRunner runner, Key key, Charset charset) throws GitException {
+  public static Optional<Head> load(GitRunner runner, Key key, Charset charset) throws GitException {
     Path root = key.repository().root();
     GitResult tracked = runner.run(root, List.of("ls-files", "--error-unmatch", "--", key.path()), null);
     if (!tracked.ok()) {
       return Optional.empty();
     }
-    GitResult blob = runner.run(root, List.of("cat-file", "blob", "HEAD:" + key.path()), null);
+    GitResult blob = runner.run(root, List.of("cat-file", "--filters", "HEAD:" + key.path()), null);
     if (!blob.ok()) {
-      return Optional.of("");
+      return Optional.of(new Head("", false));
     }
     LoadedContent content = DiffContentLoader.decode(blob.stdout(), charset, "HEAD");
-    return content.binary() ? Optional.empty() : Optional.of(content.text());
+    return content.binary() ? Optional.empty() : Optional.of(new Head(content.text(), true));
   }
 }

@@ -21,6 +21,10 @@ class LineStatusBaseTest {
   private final RepositoryLocator locator = new RepositoryLocator(runner);
 
   private Optional<String> base(Path file, Charset charset) throws Exception {
+    return head(file, charset).map(LineStatusBase.Head::text);
+  }
+
+  private Optional<LineStatusBase.Head> head(Path file, Charset charset) throws Exception {
     Optional<LineStatusBase.Key> key = LineStatusBase.find(locator, file);
     return key.isEmpty() ? Optional.empty() : LineStatusBase.load(runner, key.get(), charset);
   }
@@ -36,7 +40,7 @@ class LineStatusBaseTest {
 
     assertThat(key).isPresent();
     assertThat(key.get().path()).isEqualTo("Core/main.c");
-    assertThat(LineStatusBase.load(runner, key.get(), StandardCharsets.UTF_8)).contains("int main;\n");
+    assertThat(LineStatusBase.load(runner, key.get(), StandardCharsets.UTF_8).map(LineStatusBase.Head::text)).contains("int main;\n");
   }
 
   @Test
@@ -57,7 +61,33 @@ class LineStatusBaseTest {
     repo.write("new.c", "x\n");
     repo.git("add", "new.c");
 
-    assertThat(base(repo.root().resolve("new.c"), StandardCharsets.UTF_8)).contains("");
+    assertThat(head(repo.root().resolve("new.c"), StandardCharsets.UTF_8)).hasValueSatisfying(head -> {
+      assertThat(head.text()).isEmpty();
+      assertThat(head.inHead()).isFalse();
+    });
+  }
+
+  @Test
+  void emptyCommittedFileIsInHead() throws Exception {
+    TempRepo repo = TempRepo.init();
+    repo.write("empty.c", "");
+    repo.commitAll("init");
+
+    assertThat(head(repo.root().resolve("empty.c"), StandardCharsets.UTF_8)).hasValueSatisfying(head -> {
+      assertThat(head.text()).isEmpty();
+      assertThat(head.inHead()).isTrue();
+    });
+  }
+
+  @Test
+  void baseGoesThroughTheWorkingTreeEncoding() throws Exception {
+    // Git keeps the file as UTF-8 and writes it to the working tree in windows-1251.
+    TempRepo repo = TempRepo.init();
+    repo.write(".gitattributes", "*.c working-tree-encoding=windows-1251\n");
+    Files.write(repo.root().resolve("ru.c"), "// Привет\n".getBytes(CP1251));
+    repo.commitAll("init");
+
+    assertThat(base(repo.root().resolve("ru.c"), CP1251)).contains("// Привет\n");
   }
 
   @Test
