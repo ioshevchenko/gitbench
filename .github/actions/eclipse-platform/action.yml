@@ -1,0 +1,24 @@
+name: Eclipse platform
+description: Downloads the Eclipse 4.33 platform for its p2 publisher and sets ECLIPSE_HOME.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/eclipse
+        key: eclipse-platform-4.33-win32-x86_64
+
+    - name: Download
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        curl -fsSL -o "$RUNNER_TEMP/eclipse.zip" \
+          https://archive.eclipse.org/eclipse/downloads/drops4/R-4.33-202409030240/eclipse-platform-4.33-win32-x86_64.zip
+        unzip -q "$RUNNER_TEMP/eclipse.zip" -d "$RUNNER_TEMP"
+
+    - name: Set ECLIPSE_HOME
+      shell: bash
+      run: echo "ECLIPSE_HOME=$RUNNER_TEMP/eclipse" >> "$GITHUB_ENV"
