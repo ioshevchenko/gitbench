@@ -137,10 +137,14 @@ final class MergeColumns {
         }
       }
     }
+    // Typing outside the blocks leaves the words as they are; a new presentation would color the whole file again.
+    boolean wordsChanged = !words.equals(inner);
     inner = words;
     List<SourceViewer> viewers = List.of(yours, result, theirs);
     for (int i = 0; i < viewers.size(); i++) {
-      TextViewers.refreshPresentation(viewers.get(i), reconcilers[i]);
+      if (wordsChanged) {
+        TextViewers.refreshPresentation(viewers.get(i), reconcilers[i]);
+      }
       viewers.get(i).getTextWidget().redraw();
     }
     leftDivider.redraw();
