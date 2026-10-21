@@ -1,0 +1,13 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation gradleApi()
+    implementation 'org.apache.xmlgraphics:batik-transcoder:1.18'
+    implementation 'org.apache.xmlgraphics:batik-codec:1.18'
+}

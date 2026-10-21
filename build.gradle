@@ -9,7 +9,7 @@ def eclipseBundles = [
     'org.eclipse.ui.editors_*', 'org.eclipse.ui.workbench.texteditor_*', 'org.eclipse.text_*',
     'org.eclipse.core.runtime_*', 'org.eclipse.core.resources_*', 'org.eclipse.core.jobs_*',
     'org.eclipse.core.commands_*', 'org.eclipse.equinox.common_*', 'org.eclipse.equinox.preferences_*',
-    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.eclipse.e4.ui.*'
+    'org.eclipse.equinox.registry_*', 'org.eclipse.osgi_*', 'org.osgi.service.prefs_*', 'org.eclipse.e4.ui.*'
 ]
 
 repositories {
@@ -71,4 +71,20 @@ tasks.register('deployDropins') {
         }
         println "Deployed to ${dropins}"
     }
+}
+
+def rasterizeIcons = tasks.register('rasterizeIcons', gitbench.build.RasterizeIconsTask) {
+    group = 'gitbench'
+    svgDir = layout.projectDirectory.dir('icons/svg')
+    pngDir = layout.buildDirectory.dir('generated/icons/png')
+}
+
+tasks.named('jar') {
+    from(rasterizeIcons) {
+        into 'icons/png'
+    }
+}
+
+tasks.named('test') {
+    dependsOn rasterizeIcons
 }

@@ -6,7 +6,8 @@
       <view id="gitbench.views.commit"
             name="Commit"
             category="gitbench.category"
-            class="gitbench.ui.commit.CommitView"/>
+            class="gitbench.ui.commit.CommitView"
+            icon="icons/png/light/commitToolWindow.png"/>
    </extension>
    <extension point="org.eclipse.ui.preferencePages">
       <page id="gitbench.preferences"
