@@ -216,3 +216,63 @@ tasks.register('uiTest', Test) {
     doFirst { systemProperty 'gitbench.cdtJars', cdtJars.asPath }
     dependsOn rasterizeIcons
 }
+
+// The p2 update site: Help -> Install New Software in the IDE. The p2 publisher of an Eclipse installation turns the
+// plugin and the feature into a repository: -PeclipseHome=<folder>, or the IDE in cubeIdeHome.
+def repository = findProperty('githubRepository') ?: 'OWNER/gitbench'
+
+def featureJar = tasks.register('featureJar', Jar) {
+    group = 'gitbench'
+    description = 'Builds the feature that the update site offers.'
+    archiveFileName = "gitbench_${bundleVersion}.jar"
+    destinationDirectory = layout.buildDirectory.dir('feature')
+    from('site') {
+        include 'feature.xml'
+        filter { String line -> line.replace('@VERSION@', bundleVersion).replace('@REPOSITORY@', repository) }
+    }
+    doFirst {
+        delete fileTree(destinationDirectory) { include 'gitbench_*.jar' }
+    }
+}
+
+def siteInput = tasks.register('siteInput', Sync) {
+    from(tasks.named('shadowJar')) { into 'plugins' }
+    from(featureJar) { into 'features' }
+    into layout.buildDirectory.dir('site-input')
+}
+
+tasks.register('updateSite') {
+    group = 'gitbench'
+    description = 'Builds the p2 update site in build/update-site and a zip of it in build/distributions.'
+    dependsOn siteInput
+    def input = layout.buildDirectory.dir('site-input')
+    def output = layout.buildDirectory.dir('update-site')
+    outputs.dir(output)
+    doLast {
+        def eclipseHome = findProperty('eclipseHome') ?: cubeIdeHome
+        if (eclipseHome == null) {
+            throw new GradleException('Set an Eclipse installation with the p2 publisher: -PeclipseHome=<folder> or -PcubeIdeHome=<folder>')
+        }
+        def launcher = ['eclipsec.exe', 'stm32cubeidec.exe', 'eclipse'].collect { new File(eclipseHome, it) }.find { it.exists() }
+        if (launcher == null) {
+            throw new GradleException("No eclipsec.exe, stm32cubeidec.exe or eclipse in ${eclipseHome}")
+        }
+        def site = output.get().asFile
+        delete site
+        def siteUri = site.toURI().toString()
+        def run = { List<String> arguments ->
+            project.exec {
+                commandLine([launcher.absolutePath, '-nosplash', '-consoleLog', '-data', '@none'] + arguments)
+            }
+        }
+        run(['-application', 'org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher',
+             '-metadataRepository', siteUri, '-artifactRepository', siteUri,
+             '-source', input.get().asFile.absolutePath, '-publishArtifacts', '-compress'])
+        run(['-application', 'org.eclipse.equinox.p2.publisher.CategoryPublisher',
+             '-metadataRepository', siteUri, '-categoryDefinition', file('site/category.xml').toURI().toString(),
+             '-categoryQualifier', 'gitbench', '-compress'])
+        ant.zip(destfile: layout.buildDirectory.file("distributions/gitbench-update-site-${project.version}.zip").get().asFile,
+                basedir: site)
+        println "Update site: ${site}"
+    }
+}

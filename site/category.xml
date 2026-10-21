@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="gitbench" version="0.0.0">
+      <category name="gitbench"/>
+   </feature>
+   <category-def name="gitbench" label="Gitbench">
+      <description>An IntelliJ-style Git UI for Eclipse.</description>
+   </category-def>
+</site>
