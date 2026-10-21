@@ -28,7 +28,8 @@ public final class TopologyLoader {
       return new CommitTopology(index, List.of());
     }
     String stdin = String.join("\n", starts) + "\n";
-    String out = runner.runOk(repo.root(), List.of("log", "--topo-order", "--format=%H %P %ct", "--stdin"),
+    // IntelliJ reads the log with --date-order (GitLogProvider); the graph sorts from there.
+    String out = runner.runOk(repo.root(), List.of("log", "--date-order", "--format=%H %P %ct", "--stdin"),
                               stdin.getBytes(StandardCharsets.UTF_8));
     List<String[]> lines = new ArrayList<>();
     for (String line : out.split("\n")) {

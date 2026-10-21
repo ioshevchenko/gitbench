@@ -80,6 +80,19 @@ public final class TempRepo {
     git("commit", "-q", "-m", msg);
   }
 
+  /** Commits everything with fixed author and committer dates, in seconds since the epoch. */
+  public void commitAllAt(String msg, long epochSeconds) {
+    git("add", "-A");
+    String date = "@" + epochSeconds + " +0000";
+    runGit(root, null, java.util.Map.of("GIT_AUTHOR_DATE", date, "GIT_COMMITTER_DATE", date), "commit", "-q", "-m", msg);
+  }
+
+  /** Merges {@code branch} into the current branch with a fixed date. */
+  public void mergeAt(String branch, long epochSeconds) {
+    String date = "@" + epochSeconds + " +0000";
+    runGit(root, null, java.util.Map.of("GIT_AUTHOR_DATE", date, "GIT_COMMITTER_DATE", date), "merge", "-q", "--no-ff", "--no-edit", branch);
+  }
+
   /** Runs git in the repository root and returns its stdout. Fails the test on a non-zero exit code. */
   public String git(String... args) {
     return runGit(root, args);
@@ -87,21 +100,23 @@ public final class TempRepo {
 
   /** Runs git with {@code input} on stdin, for example {@code fast-import}. */
   public String gitWithInput(byte[] input, String... args) {
-    return runGit(root, input, args);
+    return runGit(root, input, java.util.Map.of(), args);
   }
 
   public static String runGit(Path dir, String... args) {
-    return runGit(dir, null, args);
+    return runGit(dir, null, java.util.Map.of(), args);
   }
 
-  private static String runGit(Path dir, byte[] input, String... args) {
+  private static String runGit(Path dir, byte[] input, java.util.Map<String, String> env, String... args) {
     List<String> command = new ArrayList<>();
     command.add("git");
     command.add("-c");
     command.add("core.quotepath=false");
     command.addAll(List.of(args));
     try {
-      Process process = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true).start();
+      ProcessBuilder builder = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true);
+      builder.environment().putAll(env);
+      Process process = builder.start();
       try (var stdin = process.getOutputStream()) {
         if (input != null) {
           stdin.write(input);
