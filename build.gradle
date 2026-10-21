@@ -1,5 +1,7 @@
 plugins {
     id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.1.21'
+    id 'com.gradleup.shadow' version '8.3.6'
 }
 
 def cubeIde = file(property('cubeIdeHome'))
@@ -22,6 +24,13 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'org.assertj:assertj-core:3.27.3'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+    implementation 'it.unimi.dsi:fastutil-core:8.5.15'
+    compileOnly 'org.jetbrains:annotations:26.0.2'
+    testImplementation 'org.jetbrains:annotations:26.0.2'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
 }
 
 java {
@@ -34,9 +43,32 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+// The commit graph is ported from IntelliJ Community as is (Java and Kotlin), with small shims for the platform.
+def graphDir = 'third_party/intellij-graph'
+sourceSets {
+    main {
+        java.srcDirs += ["${graphDir}/src", "${graphDir}/shims"]
+        kotlin.srcDirs += ["${graphDir}/src", "${graphDir}/shims"]
+    }
+    test {
+        java.srcDirs += ["${graphDir}/test", "${graphDir}/testShims"]
+        kotlin.srcDirs += ["${graphDir}/test", "${graphDir}/testShims"]
+    }
+}
+
 def qualifier = new Date().format('yyyyMMddHHmm')
 
 tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('shadowJar') {
     archiveFileName = "gitbench_${project.version}.${qualifier}.jar"
     from(projectDir) {
         include 'plugin.xml', 'NOTICE'
@@ -50,23 +82,31 @@ tasks.named('jar') {
             }
         }
     }
+    minimize()
+    exclude 'META-INF/*.kotlin_module', 'META-INF/versions/**', 'META-INF/maven/**'
+}
+
+tasks.named('assemble') {
+    dependsOn 'shadowJar'
 }
 
 test {
     useJUnitPlatform()
     systemProperty 'gitbench.projectDir', projectDir.absolutePath
+    systemProperty 'gitbench.graphTestData', file("${graphDir}/testData").absolutePath
+    dependsOn 'shadowJar'
 }
 
 tasks.register('deployDropins') {
     group = 'gitbench'
     description = 'Copies the plugin jar into the dropins folder of the configured CubeIDE.'
-    dependsOn 'jar'
+    dependsOn 'shadowJar'
     doLast {
         def dropins = new File(cubeIde, 'dropins')
         dropins.mkdirs()
         dropins.listFiles({ File f -> f.name.startsWith('gitbench_') && f.name.endsWith('.jar') } as FileFilter)?.each { it.delete() }
         copy {
-            from tasks.named('jar')
+            from tasks.named('shadowJar')
             into dropins
         }
         println "Deployed to ${dropins}"
@@ -79,7 +119,7 @@ def rasterizeIcons = tasks.register('rasterizeIcons', gitbench.build.RasterizeIc
     pngDir = layout.buildDirectory.dir('generated/icons/png')
 }
 
-tasks.named('jar') {
+tasks.named('shadowJar') {
     from(rasterizeIcons) {
         into 'icons/png'
     }
