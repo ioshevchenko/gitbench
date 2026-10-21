@@ -31,6 +31,19 @@
             class="gitbench.ui.diff.DiffEditor"
             default="false"/>
    </extension>
+   <extension point="org.eclipse.ui.workbench.texteditor.rulerColumns">
+      <column id="gitbench.columns.changes"
+            name="Gitbench Changes"
+            class="gitbench.ui.status.ChangeMarkerColumn"
+            enabled="true"
+            global="true"
+            includeInMenu="true">
+         <placement gravity="0.9">
+            <after id="org.eclipse.ui.editors.columns.linenumbers"/>
+         </placement>
+         <targetClass class="org.eclipse.ui.texteditor.AbstractDecoratedTextEditor"/>
+      </column>
+   </extension>
    <extension point="org.eclipse.ui.contexts">
       <context id="gitbench.contexts.diff"
             name="Gitbench Diff"
