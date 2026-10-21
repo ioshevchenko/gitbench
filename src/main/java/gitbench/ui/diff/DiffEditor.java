@@ -26,6 +26,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.dialogs.ErrorDialog;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
@@ -72,7 +73,11 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
   private int diffGeneration;
   private int documentVersion;
   private int comparedVersion = -1;
+  /** The document version of the last started comparison; the typing timer skips a version already compared. */
+  private int requestedVersion = -1;
   private boolean rediffScheduled;
+  /** The left text as git gave it, before the LF normalization, for the "only line separators" notice. */
+  private String leftOriginal = "";
   private final IDocumentListener documentListener = new IDocumentListener() {
     @Override
     public void documentAboutToBeChanged(DocumentEvent event) {
@@ -198,6 +203,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       return;
     }
     IDocument leftDocument = SideDocuments.revision(leftContent);
+    leftOriginal = leftContent.text();
     IDocument rightDocument;
     if (request.right() instanceof DiffSide.WorkingFile file) {
       try {
@@ -301,8 +307,14 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
    */
   private void repositoryChanged(gitbench.git.GitRepository repository) {
     DiffRequest request = diffInput().request();
-    if (content == null || !repository.equals(request.repository()) || !(request.left() instanceof DiffSide.Revision revision)
-        || revision.revision().matches("[0-9a-f]{40}")) {
+    if (content == null || !repository.equals(request.repository())) {
+      return;
+    }
+    if (request.left() instanceof DiffSide.Empty && request.right() instanceof DiffSide.WorkingFile) {
+      reloadIfCommitted(request);
+      return;
+    }
+    if (!(request.left() instanceof DiffSide.Revision revision) || revision.revision().matches("[0-9a-f]{40}")) {
       return;
     }
     IDocument leftDocument = content.left();
@@ -321,6 +333,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       asyncExec(() -> {
         if (generation == loadGeneration && content != null && content.left() == leftDocument && !result.binary()) {
           String text = DiffText.of(result.text()).text();
+          leftOriginal = result.text();
           content = content.withLeftTitle(header(request, revision, result));
           if (text.equals(leftDocument.get())) {
             // Most events (a fetch, a commit of another file) leave the side as it is; a set would scroll to the top.
@@ -338,6 +351,35 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     job.schedule();
   }
 
+  /**
+   * An added or unversioned file that is now in HEAD, after a commit, gets HEAD on the left, as the IntelliJ diff of
+   * a committed file: the diff becomes empty.
+   */
+  private void reloadIfCommitted(DiffRequest request) {
+    int generation = loadGeneration;
+    Job job = Job.create("Reload diff of " + request.title(), monitor -> {
+      try {
+        boolean committed = Activator.getDefault().gitRunner()
+          .run(request.repository().root(), List.of("cat-file", "-e", "HEAD:" + request.path()), null).ok();
+        if (committed) {
+          asyncExec(() -> {
+            if (generation == loadGeneration && diffInput().request().equals(request)) {
+              DiffRequest now = new DiffRequest(request.repository(), request.path(), new DiffSide.Revision("HEAD", request.path()),
+                                                request.right());
+              replaceInput(diffInput().withRequest(now));
+            }
+          });
+        }
+      }
+      catch (GitException e) {
+        // No HEAD yet, or git failed: the diff stays as it is.
+      }
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
+  }
+
   // Comparison
 
   private void scheduleRediff() {
@@ -347,7 +389,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     rediffScheduled = true;
     root.getDisplay().timerExec(REDIFF_DELAY_MS, () -> {
       rediffScheduled = false;
-      if (!root.isDisposed()) {
+      // After >> the editor compares at once; the timer of that edit has nothing left to do.
+      if (!root.isDisposed() && requestedVersion != documentVersion) {
         rediff();
       }
     });
@@ -359,6 +402,8 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
     int generation = ++diffGeneration;
     int version = documentVersion;
+    requestedVersion = version;
+    String original = leftOriginal;
     String leftRaw = content.left().get();
     String rightRaw = content.right().get();
     IgnorePolicy ignore = DiffSettings.ignore();
@@ -375,7 +420,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
         changes = List.of();
         status = "Files are too large to compare";
       }
-      String bannerText = status != null ? status : bannerText(leftRaw, rightRaw, leftText, rightText, changes, highlight);
+      String bannerText = status != null ? status : bannerText(original, rightRaw, leftText, rightText, changes, highlight);
       List<DiffChange> result = changes;
       asyncExec(() -> {
         if (generation == diffGeneration && content != null && pane != null) {
@@ -392,7 +437,10 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     job.schedule();
   }
 
-  /** The notice above the columns, as the IntelliJ diff notifications. */
+  /**
+   * The notice above the columns, as the IntelliJ diff notifications. {@code leftRaw} is the left text as git gave
+   * it, so a CRLF file in git that matches a CRLF working file is identical, not different in line separators.
+   */
   private static String bannerText(String leftRaw, String rightRaw, DiffText left, DiffText right, List<DiffChange> changes,
                                    HighlightPolicy highlight) {
     if (highlight == HighlightPolicy.DO_NOT_HIGHLIGHT) {
@@ -418,8 +466,13 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       return;
     }
     if (comparedVersion != documentVersion) {
-      // The blocks are older than the text: compare first, then the user sees the current blocks.
-      rediff();
+      // The click came during the pause after typing: compare now, then apply the same block of the left side.
+      change = compareNow(change);
+      if (change == null) {
+        return;
+      }
+    }
+    if (!validateEdit()) {
       return;
     }
     Edit edit = append ? BlockApplier.append(content.leftText(), content.rightText(), change, Side.LEFT)
@@ -434,6 +487,60 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       Activator.getDefault().getLog().error("Cannot apply the diff block", e);
     }
     rediff();
+  }
+
+  /** Compares on the UI thread and returns the block that has the same left lines as {@code change}, or null. */
+  private DiffChange compareNow(DiffChange change) {
+    DiffText leftText = DiffText.of(content.left().get());
+    String rightRaw = content.right().get();
+    DiffText rightText = DiffText.of(rightRaw);
+    List<DiffChange> changes;
+    try {
+      changes = DiffModel.compute(leftText, rightText, DiffSettings.ignore(), DiffSettings.highlight());
+    }
+    catch (DiffTooBigException e) {
+      return null;
+    }
+    diffGeneration++;
+    requestedVersion = documentVersion;
+    comparedVersion = documentVersion;
+    content = content.withChanges(leftText, rightText, changes);
+    pane.setContent(content);
+    toolbar.setCount(changes.size(), null);
+    for (DiffChange fresh : changes) {
+      if (fresh.startLine1() == change.startLine1() && fresh.endLine1() == change.endLine1()) {
+        return fresh;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Asks Eclipse whether the working file may change, as a text editor does before the first edit: a read-only file
+   * can be made writable by the team provider, or the user sees why it cannot be edited.
+   */
+  @Override
+  public boolean validateEdit() {
+    if (buffer == null) {
+      return true;
+    }
+    // A validated buffer of a read-only file keeps a status that is not OK: it stays read-only.
+    if (buffer.isStateValidated()) {
+      return buffer.getStatus() == null || buffer.getStatus().isOK();
+    }
+    try {
+      SideDocuments.manager().validateState(new org.eclipse.core.filebuffers.IFileBuffer[]{buffer}, null, getSite().getShell());
+    }
+    catch (CoreException e) {
+      ErrorDialog.openError(getSite().getShell(), "Edit", "Cannot change " + connectedFile, e.getStatus());
+      return false;
+    }
+    org.eclipse.core.runtime.IStatus status = buffer.getStatus();
+    if (!buffer.isStateValidated() || status != null && !status.isOK()) {
+      MessageDialog.openError(getSite().getShell(), "Edit", connectedFile + " is read-only.");
+      return false;
+    }
+    return true;
   }
 
   @Override
@@ -508,6 +615,18 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     }
     unload();
     DiffEditorInput next = input.withIndex(index);
+    setInputWithNotify(next);
+    setPartName(next.getName());
+    setTitleToolTip(next.getToolTipText());
+    load();
+  }
+
+  /** Shows another input in this tab; the working file is saved first, so its edits stay on disk. */
+  private void replaceInput(DiffEditorInput next) {
+    if (isDirty() && !saveBeforeLeaving()) {
+      return;
+    }
+    unload();
     setInputWithNotify(next);
     setPartName(next.getName());
     setTitleToolTip(next.getToolTipText());

@@ -58,6 +58,11 @@ final class OnesideViewer implements DiffPane {
     TextViewers.followEditorBackground(viewer, ruler, numbers);
     Highlighting.configure(viewer, document, initial.file());
     text.addLineBackgroundListener(e -> e.lineBackground = DiffColors.color(added ? BlockKind.INSERTED : BlockKind.DELETED, dark));
+    text.addVerifyListener(e -> {
+      if (!host.validateEdit()) {
+        e.doit = false;
+      }
+    });
     viewer.prependVerifyKeyListener(e -> {
       if (host.handleKey(e.keyCode, e.stateMask)) {
         e.doit = false;

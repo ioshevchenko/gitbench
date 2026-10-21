@@ -474,7 +474,7 @@ public final class GitLogView extends ViewPart {
         asyncExec(() -> {
           if (generation == selectionGeneration) {
             filesCommit = hash;
-            filesParents = loaded != null ? loaded.parents() : List.of();
+            filesParents = loaded != null ? loaded.parents() : modelParents(hash);
             files.setFiles(changed);
             if (loaded != null) {
               details.put(hash, loaded);
@@ -574,6 +574,12 @@ public final class GitLogView extends ViewPart {
       .map(c -> gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, c)).toList();
     gitbench.diff.DiffRequest first = gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, selected.get(0));
     gitbench.ui.diff.DiffOpener.open(getSite().getPage(), chain, gitbench.diff.DiffRequests.chain(chain, first));
+  }
+
+  /** The parents from the log graph, when the commit details did not load; the diff then still compares with them. */
+  private List<String> modelParents(String hash) {
+    gitbench.log.LogModel model = table.model();
+    return model == null ? List.of() : model.parentsOf(hash);
   }
 
   /** Jump to Source: opens the working tree files of the selected commit files. */

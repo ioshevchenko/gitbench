@@ -66,6 +66,10 @@ final class MergeColumns {
   private final List<Hit> hits = new ArrayList<>();
   private MergeModel model;
   private boolean syncing;
+  /** Whether a syntax highlighter paints each column: Yours, Result, Theirs. */
+  private final boolean[] reconcilers = new boolean[3];
+  /** The changed words of the unresolved blocks, computed once per refresh for all three columns. */
+  private java.util.Map<MergeChange, MergeModel.InnerDifferences> inner = java.util.Map.of();
 
   /** A painted block button. */
   private record Hit(Canvas divider, Rectangle bounds, MergeChange change, String action, String tooltip) {
@@ -89,9 +93,9 @@ final class MergeColumns {
     result = TextViewers.create(control, dark, resultDocument, true);
     rightDivider = new Canvas(control, SWT.DOUBLE_BUFFERED);
     theirs = TextViewers.create(control, dark, theirsDocument, false);
-    Highlighting.configure(yours, yoursDocument, file);
-    Highlighting.configure(result, resultDocument, file);
-    Highlighting.configure(theirs, theirsDocument, file);
+    reconcilers[0] = Highlighting.configure(yours, yoursDocument, file);
+    reconcilers[1] = Highlighting.configure(result, resultDocument, file);
+    reconcilers[2] = Highlighting.configure(theirs, theirsDocument, file);
     control.setLayout(new ColumnsLayout());
 
     install(yours, ThreeSide.LEFT);
@@ -125,8 +129,19 @@ final class MergeColumns {
 
   /** Repaints the highlighting and the bands after any change of the blocks. */
   void refresh() {
-    for (SourceViewer viewer : List.of(yours, result, theirs)) {
-      viewer.getTextWidget().redraw();
+    java.util.Map<MergeChange, MergeModel.InnerDifferences> words = new java.util.HashMap<>();
+    if (model != null) {
+      for (MergeChange change : model.changes()) {
+        if (!change.isResolved()) {
+          words.put(change, model.innerDifferences(change));
+        }
+      }
+    }
+    inner = words;
+    List<SourceViewer> viewers = List.of(yours, result, theirs);
+    for (int i = 0; i < viewers.size(); i++) {
+      TextViewers.refreshPresentation(viewers.get(i), reconcilers[i]);
+      viewers.get(i).getTextWidget().redraw();
     }
     leftDivider.redraw();
     rightDivider.redraw();
@@ -155,12 +170,32 @@ final class MergeColumns {
     refresh();
   }
 
+  /**
+   * Forgets the typing history of the Result. A block action changes the text and the block states together, so the
+   * text undo must not cross it: Ctrl+Z of typed text stops at the last block action.
+   */
+  void resetUndo() {
+    if (result.getUndoManager() != null) {
+      result.getUndoManager().reset();
+    }
+  }
+
+  /** Ctrl+Z for typed text: the undo of the Result column. Returns false when there is nothing to undo. */
+  boolean undoTyping() {
+    if (result.canDoOperation(org.eclipse.jface.text.ITextOperationTarget.UNDO)) {
+      result.doOperation(org.eclipse.jface.text.ITextOperationTarget.UNDO);
+      return true;
+    }
+    return false;
+  }
+
   void setFocus() {
     result.getTextWidget().setFocus();
   }
 
   private void install(SourceViewer viewer, ThreeSide side) {
     StyledText text = viewer.getTextWidget();
+    viewer.addTextPresentationListener(presentation -> addWords(presentation, viewer, side));
     text.addLineBackgroundListener(e -> {
       if (model == null) {
         return;
@@ -168,7 +203,8 @@ final class MergeColumns {
       int line = text.getLineAtOffset(e.lineOffset);
       for (MergeChange change : model.changes()) {
         if (shown(change, side) && change.startLine(side) <= line && line < change.endLine(side)) {
-          e.lineBackground = colorOf(change);
+          // As IntelliJ: a block with highlighted words has lighter lines, the words have the full color.
+          e.lineBackground = wordsOf(change, side).isEmpty() ? colorOf(change) : lighterColorOf(change, text.getBackground());
           return;
         }
       }
@@ -201,6 +237,49 @@ final class MergeColumns {
 
   private Color colorOf(MergeChange change) {
     return change.isConflict() ? DiffColors.conflict(dark) : DiffColors.color(change.kind(), dark);
+  }
+
+  private Color lighterColorOf(MergeChange change, Color background) {
+    return change.isConflict() ? DiffColors.ignoredConflict(dark, background) : DiffColors.ignoredColor(change.kind(), dark, background);
+  }
+
+  private List<gitbench.diff.InnerRange> wordsOf(MergeChange change, ThreeSide side) {
+    MergeModel.InnerDifferences words = inner.get(change);
+    if (words == null) {
+      return List.of();
+    }
+    return switch (side) {
+      case LEFT -> words.left();
+      case BASE -> words.base();
+      case RIGHT -> words.right();
+    };
+  }
+
+  /** Adds the background of the changed words to each text presentation of a column. */
+  private void addWords(org.eclipse.jface.text.TextPresentation presentation, SourceViewer viewer, ThreeSide side) {
+    if (model == null) {
+      return;
+    }
+    IDocument document = viewer.getDocument();
+    int lineCount = document.getNumberOfLines();
+    for (MergeChange change : model.changes()) {
+      Color color = colorOf(change);
+      for (gitbench.diff.InnerRange range : wordsOf(change, side)) {
+        if (range.endColumn() <= range.startColumn() || range.line() >= lineCount) {
+          continue;
+        }
+        try {
+          int offset = document.getLineOffset(range.line()) + range.startColumn();
+          int length = Math.min(range.endColumn() - range.startColumn(), document.getLength() - offset);
+          if (length > 0) {
+            presentation.mergeStyleRange(new org.eclipse.swt.custom.StyleRange(offset, length, null, color));
+          }
+        }
+        catch (BadLocationException ignored) {
+          // The Result changed after the words were computed; the next refresh repaints.
+        }
+      }
+    }
   }
 
   private void paintInsertionLines(GC gc, StyledText text, ThreeSide side) {

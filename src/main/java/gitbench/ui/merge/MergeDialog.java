@@ -60,6 +60,9 @@ public final class MergeDialog extends Dialog {
   private MergeColumns columns;
   private MergeModel model;
   private boolean resolved;
+  /** The states before each block action, for Ctrl+Z, and the Result text right after the last action. */
+  private final java.util.Deque<MergeModel.Snapshot> undo = new java.util.ArrayDeque<>();
+  private String textAfterLastAction;
 
   /**
    * {@code service} marks the file resolved; {@code afterSave} tells the workspace and the views. The UI tests pass
@@ -153,13 +156,8 @@ public final class MergeDialog extends Dialog {
     layout.marginWidth = 0;
     layout.marginHeight = 0;
     layout.verticalSpacing = 0;
-    toolbar = new MergeToolbar(area, this::previous, this::next, side -> {
-      model.applyNonConflicting(side);
-      changed();
-    }, () -> {
-      model.resolveSimpleConflicts();
-      changed();
-    });
+    toolbar = new MergeToolbar(area, this::previous, this::next, side -> act(() -> model.applyNonConflicting(side)),
+                              () -> act(model::resolveSimpleConflicts));
     toolbar.control().setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
     createBanner(area);
     columns = new MergeColumns(area, Theme.isDark(), repository.root().resolve(file.path()),
@@ -174,6 +172,7 @@ public final class MergeDialog extends Dialog {
     // As IntelliJ with "Automatically apply non-conflicting changes": only the conflicts are left to the user.
     model.applyNonConflicting(ThreeSide.BASE);
     columns.setModel(model);
+    columns.resetUndo();
     changed();
     MergeChange first = model.next(-1);
     if (first != null) {
@@ -215,6 +214,30 @@ public final class MergeDialog extends Dialog {
       ((GridData)banner.getLayoutData()).exclude = !done;
       banner.getParent().layout(true);
     }
+  }
+
+  /** Runs a block action so that Ctrl+Z can take it back. */
+  private void act(Runnable action) {
+    undo.push(model.snapshot());
+    action.run();
+    textAfterLastAction = resultDocument.get();
+    columns.resetUndo();
+    changed();
+  }
+
+  /**
+   * Ctrl+Z: takes back the last block action, when nothing was typed after it. Typed text goes back through the
+   * undo of the Result column instead.
+   */
+  private boolean undoLast() {
+    if (!undo.isEmpty() && resultDocument.get().equals(textAfterLastAction)) {
+      model.restore(undo.pop());
+      textAfterLastAction = resultDocument.get();
+      columns.resetUndo();
+      changed();
+      return true;
+    }
+    return columns.undoTyping();
   }
 
   private void next() {
@@ -325,20 +348,17 @@ public final class MergeDialog extends Dialog {
   private final class ColumnActions implements MergeColumns.Actions {
     @Override
     public void replace(MergeChange change, Side side) {
-      model.replaceChange(change, side);
-      changed();
+      act(() -> model.replaceChange(change, side));
     }
 
     @Override
     public void ignore(MergeChange change, Side side) {
-      model.ignoreChange(change, side);
-      changed();
+      act(() -> model.ignoreChange(change, side));
     }
 
     @Override
     public void magic(MergeChange change) {
-      model.resolveAutomatically(change);
-      changed();
+      act(() -> model.resolveAutomatically(change));
     }
 
     @Override
@@ -350,6 +370,10 @@ public final class MergeDialog extends Dialog {
       }
       if (keyCode == SWT.F7 && modifiers == SWT.SHIFT) {
         previous();
+        return true;
+      }
+      if ((keyCode == 'z' || keyCode == 'Z') && modifiers == SWT.MOD1) {
+        undoLast();
         return true;
       }
       return false;

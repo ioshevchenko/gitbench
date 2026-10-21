@@ -34,7 +34,9 @@ public final class StringUtil {
   private static String withoutWhitespaces(CharSequence s) {
     StringBuilder result = new StringBuilder(s.length());
     for (int i = 0; i < s.length(); i++) {
-      if (!Character.isWhitespace(s.charAt(i))) {
+      char c = s.charAt(i);
+      // StringUtil.isWhiteSpace of IntelliJ: space, tab, LF and CR only.
+      if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
         result.append(s.charAt(i));
       }
     }

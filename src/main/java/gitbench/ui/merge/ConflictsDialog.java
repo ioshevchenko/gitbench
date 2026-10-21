@@ -189,7 +189,8 @@ final class ConflictsDialog extends Dialog {
         }
       }
     }
-    return result;
+    // A folder and one of its files can be selected together.
+    return result.stream().distinct().toList();
   }
 
   /** Merge... works on one file that exists on both sides; binary files show an error in the merge window. */

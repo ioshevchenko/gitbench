@@ -224,4 +224,63 @@ class MergeWindowTest extends SwtTest {
     assertThat(saved[0]).isFalse();
     assertThat(service.list(repository)).hasSize(1);
   }
+
+  /** Builds a conflict whose sides change one word of the same line, and opens the merge window. */
+  private MergeDialog openWordConflict() throws Exception {
+    repo = TempRepo.init();
+    repo.write("a.c", "int a = 0;\n");
+    repo.commitAll("base");
+    repo.git("checkout", "-q", "-b", "feature");
+    repo.write("a.c", "int a = 2;\n");
+    repo.commitAll("theirs");
+    repo.git("checkout", "-q", "main");
+    repo.write("a.c", "int a = 1;\n");
+    repo.commitAll("ours");
+    repo.gitMayFail("merge", "-q", "feature");
+    repository = new GitRepository(repo.root());
+    GitRunner runner = new GitRunner(() -> "git", GitCommandListener.NONE);
+    service = new ConflictService(runner);
+    ConflictFile file = service.list(repository).get(0);
+    MergeContext context = service.context(repository);
+    MergeContents contents = MergeContentLoader.load(runner, repository, file, context, StandardCharsets.UTF_8);
+    MergeDialog dialog = new MergeDialog(shell, repository, file, context, contents, StandardCharsets.UTF_8, service, () -> { });
+    dialog.setBlockOnOpen(false);
+    dialog.open();
+    pump();
+    return dialog;
+  }
+
+  @Test
+  void ctrlZTakesBackTheLastBlockAction() throws Exception {
+    MergeDialog dialog = openWordConflict();
+    columns = dialog.columns();
+    model = dialog.model();
+    MergeChange conflict = model.changes().get(0);
+    StyledText resultText = columns.text(ThreeSide.BASE);
+    String before = resultText.getText();
+
+    clickBlockButton(conflict, true, false);
+    assertThat(resultText.getText()).isNotEqualTo(before);
+    org.eclipse.swt.widgets.Event key = new org.eclipse.swt.widgets.Event();
+    key.keyCode = 'z';
+    key.character = (char)26;
+    key.stateMask = SWT.MOD1;
+    resultText.notifyListeners(SWT.KeyDown, key);
+    pump();
+
+    assertThat(resultText.getText()).isEqualTo(before);
+    assertThat(conflict.isResolved(Side.LEFT)).isFalse();
+    assertThat(conflict.isOnesideAppliedConflict()).isFalse();
+  }
+
+  @Test
+  void changedWordsOfAConflictHaveTheFullConflictColor() throws Exception {
+    MergeDialog dialog = openWordConflict();
+    StyledText resultText = dialog.columns().text(ThreeSide.BASE);
+
+    // "int a = 0;": the changed word is the 0 at column 8.
+    org.eclipse.swt.custom.StyleRange word = resultText.getStyleRangeAtOffset(8);
+    assertThat(word).isNotNull();
+    assertThat(word.background).isEqualTo(gitbench.ui.diff.DiffColors.conflict(false));
+  }
 }

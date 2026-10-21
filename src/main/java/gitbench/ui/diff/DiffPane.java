@@ -15,6 +15,9 @@ interface DiffPane {
     boolean handleKey(int keyCode, int stateMask);
 
     void contentChanged();
+
+    /** Called before the user edits the working file; false stops the edit. */
+    boolean validateEdit();
   }
 
   Control control();

@@ -27,6 +27,7 @@ class DiffViewersTest extends SwtTest {
   /** Records what the viewers ask of the editor. */
   private static final class RecordingHost implements DiffPane.Host {
     final List<DiffChange> applied = new ArrayList<>();
+    boolean editable = true;
     final List<Boolean> appended = new ArrayList<>();
 
     @Override
@@ -42,6 +43,11 @@ class DiffViewersTest extends SwtTest {
 
     @Override
     public void contentChanged() {
+    }
+
+    @Override
+    public boolean validateEdit() {
+      return editable;
     }
   }
 
@@ -150,5 +156,19 @@ class DiffViewersTest extends SwtTest {
     show();
 
     assertThat(text(shell, 0).getText()).isEqualTo("a\nold\nnew\nc\n");
+  }
+
+  @Test
+  void aReadOnlyWorkingFileRejectsTyping() {
+    RecordingHost host = new RecordingHost();
+    host.editable = false;
+    DiffContent content = content("a\nb\n", "a\nc\n", IgnorePolicy.DEFAULT);
+    SplitViewer viewer = new SplitViewer(shell, host, content, false);
+    show();
+    StyledText right = viewer.text(gitbench.diff.Side.RIGHT);
+
+    right.insert("typed ");
+
+    assertThat(right.getText()).isEqualTo("a\nc\n");
   }
 }

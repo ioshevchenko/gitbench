@@ -38,6 +38,13 @@ final class DiffEditorInput implements IEditorInput {
     return new DiffEditorInput(chain, newIndex);
   }
 
+  /** The same chain with the shown request replaced, for example by HEAD on the left after a commit. */
+  DiffEditorInput withRequest(DiffRequest request) {
+    List<DiffRequest> changed = new java.util.ArrayList<>(chain);
+    changed.set(index, request);
+    return new DiffEditorInput(changed, index);
+  }
+
   @Override
   public boolean exists() {
     return false;

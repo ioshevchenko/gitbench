@@ -6,6 +6,10 @@ import gitbench.merge.ConflictFile;
 import gitbench.merge.ConflictService;
 import gitbench.merge.MergeContext;
 import gitbench.ui.Activator;
+import gitbench.ui.RepositoryEvents;
+import gitbench.ui.WorkspaceSync;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.custom.BusyIndicator;
 import org.eclipse.swt.widgets.Shell;
@@ -29,6 +33,7 @@ public final class MergeOpener {
       return;
     }
     new ConflictsDialog(shell, repository, loaded.get().context(), loaded.get().files()).open();
+    offerContinue(shell, repository);
   }
 
   /** Opens the merge window of one conflicted file, or the conflicts window when the file cannot be merged as text. */
@@ -40,9 +45,68 @@ public final class MergeOpener {
     Optional<ConflictFile> file = loaded.get().files().stream().filter(f -> f.path().equals(path)).findFirst();
     if (file.isPresent() && file.get().canMerge()) {
       MergeDialog.open(shell, repository, file.get(), loaded.get().context());
+      offerContinue(shell, repository);
     }
-    else if (!loaded.get().files().isEmpty()) {
+    else if (file.isPresent()) {
       new ConflictsDialog(shell, repository, loaded.get().context(), loaded.get().files()).open();
+      offerContinue(shell, repository);
+    }
+    else {
+      MessageDialog.openInformation(shell, "Conflicts", path + " has no conflicts.");
+    }
+  }
+
+  /**
+   * After the last conflict, offers to finish the operation, as the IntelliJ notifications do: continue the rebase,
+   * the cherry-pick or the revert, or commit the merge. A rebase that stops on the next commit opens the conflicts
+   * window again.
+   */
+  static void offerContinue(Shell shell, GitRepository repository) {
+    Optional<Loaded> loaded = load(shell, repository);
+    if (loaded.isEmpty() || !loaded.get().files().isEmpty()) {
+      return;
+    }
+    MergeContext context = loaded.get().context();
+    String action = switch (context.operation()) {
+      case REBASE -> "Continue Rebase";
+      case CHERRY_PICK -> "Continue Cherry-Pick";
+      case REVERT -> "Continue Revert";
+      case MERGE -> "Commit Merge";
+      case NONE -> null;
+    };
+    if (action == null) {
+      return;
+    }
+    MessageDialog question = new MessageDialog(shell, "All Conflicts Resolved", null,
+                                               "All conflicts are resolved. " + action + " now?", MessageDialog.QUESTION,
+                                               0, action, "Later");
+    if (question.open() != 0) {
+      return;
+    }
+    ConflictService service = new ConflictService(Activator.getDefault().gitRunner());
+    GitException[] error = new GitException[1];
+    BusyIndicator.showWhile(shell.getDisplay(), () -> {
+      try {
+        service.continueOperation(repository, context);
+      }
+      catch (GitException e) {
+        error[0] = e;
+      }
+    });
+    Job refresh = Job.create("Refresh after " + action, monitor -> {
+      WorkspaceSync.refresh(repository);
+      RepositoryEvents.fire(repository);
+      return Status.OK_STATUS;
+    });
+    refresh.setSystem(true);
+    refresh.schedule();
+    Optional<Loaded> after = load(shell, repository);
+    if (after.isPresent() && !after.get().files().isEmpty()) {
+      // The next commit of the rebase stops on conflicts too.
+      showConflicts(shell, repository);
+    }
+    else if (error[0] != null) {
+      MessageDialog.openError(shell, action, error[0].userMessage());
     }
   }
 

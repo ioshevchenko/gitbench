@@ -54,6 +54,8 @@ final class SplitViewer implements DiffPane {
   private final Canvas divider;
   private final List<ArrowHit> arrows = new ArrayList<>();
   private final Listener ctrlFilter;
+  /** Kept, so dispose removes the filters even when the widgets are already gone. */
+  private final Display display;
   private DiffContent content;
   private Side focused = Side.RIGHT;
   private boolean ctrlDown;
@@ -91,7 +93,7 @@ final class SplitViewer implements DiffPane {
         }
       }
     };
-    Display display = control.getDisplay();
+    display = control.getDisplay();
     display.addFilter(SWT.KeyDown, ctrlFilter);
     display.addFilter(SWT.KeyUp, ctrlFilter);
     setContent(initial);
@@ -128,6 +130,14 @@ final class SplitViewer implements DiffPane {
       }
     });
     text.addListener(SWT.FocusIn, e -> focused = side);
+    if (side == Side.RIGHT) {
+      // The first edit of a read-only working file asks Eclipse first, as a text editor does.
+      text.addVerifyListener(e -> {
+        if (!host.validateEdit()) {
+          e.doit = false;
+        }
+      });
+    }
     // Before StyledText handles the key, so a consumed key such as Ctrl+Alt+R (AltGr on some layouts) types nothing.
     viewer.prependVerifyKeyListener(e -> {
       if (host.handleKey(e.keyCode, e.stateMask)) {
@@ -242,10 +252,13 @@ final class SplitViewer implements DiffPane {
 
   @Override
   public void dispose() {
-    Display display = control.getDisplay();
-    display.removeFilter(SWT.KeyDown, ctrlFilter);
-    display.removeFilter(SWT.KeyUp, ctrlFilter);
-    control.dispose();
+    if (!display.isDisposed()) {
+      display.removeFilter(SWT.KeyDown, ctrlFilter);
+      display.removeFilter(SWT.KeyUp, ctrlFilter);
+    }
+    if (!control.isDisposed()) {
+      control.dispose();
+    }
   }
 
   private SourceViewer viewer(Side side) {
