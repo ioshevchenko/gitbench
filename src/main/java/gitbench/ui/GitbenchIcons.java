@@ -17,7 +17,7 @@ public final class GitbenchIcons {
     CHEVRON_DOWN,
     ADD, DELETE, LOCATE, UPDATE, DIFF, STAR, INCOMING, OUTGOING,
     DIFF_ARROW_LEFT, DIFF_ARROW_RIGHT, DIFF_ARROW_LEFT_DOWN, DIFF_ARROW_RIGHT_DOWN, PREVIOUS_CHANGE, NEXT_CHANGE, PREVIOUS_FILE,
-    NEXT_FILE;
+    NEXT_FILE, SIDE_BY_SIDE, UNIFIED, LOCKED;
 
     /** The file name without the extension: {@code VIEW_OPTIONS} → {@code viewOptions}. */
     String fileName() {

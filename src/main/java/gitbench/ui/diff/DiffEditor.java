@@ -165,7 +165,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     showMessage("Loading...");
     toolbar.setCount(0, "");
     DiffEditorInput input = diffInput();
-    toolbar.setFileNavigation(input.chain().size() > 1, input.index() > 0, input.index() < input.chain().size() - 1);
+    toolbar.setFileNavigation(input.index(), input.chain().size());
     var charset = SideDocuments.charsetOf(request.repository().root().resolve(request.path()));
     Job job = Job.create("Load diff of " + request.title(), monitor -> {
       try {
@@ -214,8 +214,10 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       rightDocument = SideDocuments.revision(rightContent);
     }
     boolean localChanges = request.left() instanceof DiffSide.Revision && request.right() instanceof DiffSide.WorkingFile;
-    content = new DiffContent(leftDocument, rightDocument, leftContent.title(), rightContent.title(), request.right().editable(),
-                              localChanges, request.repository().root().resolve(request.path()), DiffText.of(""), DiffText.of(""), List.of());
+    Side emptySide = request.left() instanceof DiffSide.Empty ? Side.LEFT : request.right() instanceof DiffSide.Empty ? Side.RIGHT : null;
+    content = new DiffContent(leftDocument, rightDocument, header(request, request.left(), leftContent),
+                              header(request, request.right(), rightContent), request.right().editable(), localChanges,
+                              request.repository().root().resolve(request.path()), emptySide, DiffText.of(""), DiffText.of(""), List.of());
     createPane();
     firePropertyChange(PROP_DIRTY);
     rediff();
@@ -231,7 +233,28 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
     body.layout(true);
   }
 
+  /**
+   * The column header, as the IntelliJ diff title: the short hash and the path for a revision, the path for the
+   * working file, the label for a missing side.
+   */
+  private static String header(DiffRequest request, DiffSide side, LoadedContent loaded) {
+    if (side instanceof DiffSide.Revision revision) {
+      return loaded.title() + "  " + displayPath(revision.path());
+    }
+    if (side instanceof DiffSide.WorkingFile file) {
+      return displayPath(request.repository().root().relativize(file.absolutePath()).toString());
+    }
+    return loaded.title();
+  }
+
+  private static String displayPath(String path) {
+    return path.replace('/', java.io.File.separatorChar);
+  }
+
   private DiffPane createPane(DiffSettings.Viewer viewer) {
+    if (content.emptySide() != null) {
+      return new OnesideViewer(body, this, content, Theme.isDark());
+    }
     return viewer == DiffSettings.Viewer.UNIFIED ? new UnifiedViewer(body, this, content, Theme.isDark())
                                                  : new SplitViewer(body, this, content, Theme.isDark());
   }
@@ -296,7 +319,7 @@ public final class DiffEditor extends EditorPart implements DiffPane.Host, DiffT
       asyncExec(() -> {
         if (generation == loadGeneration && content != null && content.left() == leftDocument && !result.binary()) {
           String text = DiffText.of(result.text()).text();
-          content = content.withLeftTitle(result.title());
+          content = content.withLeftTitle(header(request, revision, result));
           if (text.equals(leftDocument.get())) {
             // Most events (a fetch, a commit of another file) leave the side as it is; a set would scroll to the top.
             pane.setContent(content);

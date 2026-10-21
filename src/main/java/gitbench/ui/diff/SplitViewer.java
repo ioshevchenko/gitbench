@@ -15,6 +15,7 @@ import org.eclipse.jface.text.ITextPresentationListener;
 import org.eclipse.jface.text.TextPresentation;
 import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.Color;
@@ -27,7 +28,6 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
-import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Layout;
 import org.eclipse.swt.widgets.Listener;
 
@@ -47,8 +47,8 @@ final class SplitViewer implements DiffPane {
   private final boolean dark;
   private final boolean hasReconciler;
   private final Composite control;
-  private final Label leftTitle;
-  private final Label rightTitle;
+  private final CLabel leftTitle;
+  private final CLabel rightTitle;
   private final SourceViewer left;
   private final SourceViewer right;
   private final Canvas divider;
@@ -67,8 +67,8 @@ final class SplitViewer implements DiffPane {
     this.host = host;
     this.dark = dark;
     control = new Composite(parent, SWT.NONE);
-    leftTitle = new Label(control, SWT.NONE);
-    rightTitle = new Label(control, SWT.NONE);
+    leftTitle = new CLabel(control, SWT.NONE);
+    rightTitle = new CLabel(control, SWT.NONE);
     left = TextViewers.create(control, dark, initial.left(), false);
     divider = new Canvas(control, SWT.DOUBLE_BUFFERED);
     right = TextViewers.create(control, dark, initial.right(), initial.rightEditable());
@@ -154,7 +154,9 @@ final class SplitViewer implements DiffPane {
     }
     right.setEditable(newContent.rightEditable());
     leftTitle.setText(newContent.leftTitle());
+    leftTitle.setImage(GitbenchIcons.get(Icon.LOCKED));
     rightTitle.setText(newContent.rightTitle());
+    rightTitle.setImage(newContent.rightEditable() ? null : GitbenchIcons.get(Icon.LOCKED));
     TextViewers.refreshPresentation(left, hasReconciler);
     TextViewers.refreshPresentation(right, hasReconciler);
     left.getTextWidget().redraw();
@@ -405,10 +407,10 @@ final class SplitViewer implements DiffPane {
     @Override
     protected void layout(Composite composite, boolean flushCache) {
       Rectangle area = composite.getClientArea();
-      int titleHeight = leftTitle.computeSize(SWT.DEFAULT, SWT.DEFAULT).y + 4;
+      int titleHeight = leftTitle.computeSize(SWT.DEFAULT, SWT.DEFAULT).y;
       int column = (area.width - DIVIDER_WIDTH) / 2;
-      leftTitle.setBounds(area.x + 4, area.y + 2, column - 4, titleHeight - 4);
-      rightTitle.setBounds(area.x + column + DIVIDER_WIDTH + 4, area.y + 2, area.width - column - DIVIDER_WIDTH - 4, titleHeight - 4);
+      leftTitle.setBounds(area.x, area.y, column, titleHeight);
+      rightTitle.setBounds(area.x + column + DIVIDER_WIDTH, area.y, area.width - column - DIVIDER_WIDTH, titleHeight);
       int bodyY = area.y + titleHeight;
       int bodyHeight = Math.max(0, area.height - titleHeight);
       left.getControl().setBounds(area.x, bodyY, column, bodyHeight);

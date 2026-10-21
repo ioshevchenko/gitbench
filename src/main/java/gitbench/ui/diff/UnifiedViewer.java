@@ -21,6 +21,7 @@ import org.eclipse.jface.text.source.IVerticalRulerColumn;
 import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.jface.text.source.SourceViewerConfiguration;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.Color;
@@ -30,7 +31,6 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Event;
-import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 
@@ -52,7 +52,7 @@ final class UnifiedViewer implements DiffPane {
   private final boolean dark;
   private final boolean hasReconciler;
   private final Composite control;
-  private final Label title;
+  private final CLabel title;
   private final SourceViewer viewer;
   private final IDocument document = new Document();
   private final ArrowColumn arrows = new ArrowColumn();
@@ -70,7 +70,7 @@ final class UnifiedViewer implements DiffPane {
     layout.marginHeight = 0;
     layout.verticalSpacing = 2;
     control.setLayout(layout);
-    title = new Label(control, SWT.NONE);
+    title = new CLabel(control, SWT.NONE);
     title.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
     CompositeRuler ruler = new CompositeRuler();
@@ -143,6 +143,7 @@ final class UnifiedViewer implements DiffPane {
     }
     text.setTopIndex(top);
     title.setText(newContent.leftTitle() + " → " + newContent.rightTitle());
+    title.setImage(newContent.rightEditable() ? null : GitbenchIcons.get(Icon.LOCKED));
     TextViewers.refreshPresentation(viewer, hasReconciler);
     text.redraw();
     arrows.redraw();
