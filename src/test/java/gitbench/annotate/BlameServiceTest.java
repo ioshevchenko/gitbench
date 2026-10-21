@@ -60,4 +60,18 @@ class BlameServiceTest {
     assertThat(blame.commitAt(0)).isPresent();
     assertThat(blame.commitAt(1)).isPresent();
   }
+
+  @Test
+  void blameKeepsTheBomOfTheFile() throws Exception {
+    TempRepo repo = TempRepo.init();
+    byte[] text = "﻿a\nb\n".getBytes(StandardCharsets.UTF_8);
+    Files.write(repo.root().resolve("bom.c"), text);
+    repo.commitAll("init");
+
+    // The editor text has no BOM: Eclipse keeps it apart from the document.
+    Blame blame = service.blame(new GitRepository(repo.root()), "bom.c", "a\nb\n", StandardCharsets.UTF_8);
+
+    assertThat(blame.commitAt(0)).isPresent();
+    assertThat(blame.commitAt(1)).isPresent();
+  }
 }
