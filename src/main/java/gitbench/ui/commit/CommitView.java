@@ -11,7 +11,6 @@ import gitbench.git.OutgoingCommit;
 import gitbench.git.PushResult;
 import gitbench.git.PushService;
 import gitbench.git.PushTarget;
-import gitbench.ui.push.PushDialog;
 import gitbench.git.RepositoryLocator;
 import gitbench.git.RollbackService;
 import gitbench.git.StatusService;
@@ -21,6 +20,8 @@ import gitbench.ui.Activator;
 import gitbench.ui.GitbenchIcons;
 import gitbench.ui.GitbenchIcons.Icon;
 import gitbench.ui.RepositoryContext;
+import gitbench.ui.WorkspaceSync;
+import gitbench.ui.push.PushDialog;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.IResourceChangeListener;
@@ -66,7 +67,9 @@ public final class CommitView extends ViewPart {
   private StatusService statusService;
   private CommitService commitService;
   private RollbackService rollbackService;
+  private PushService pushService;
   private RepositoryContext context;
+  private Display display;
 
   private Combo repositoryCombo;
   private List<GitRepository> comboRepositories = List.of();
@@ -80,10 +83,12 @@ public final class CommitView extends ViewPart {
 
   @Override
   public void createPartControl(Composite parent) {
+    display = parent.getDisplay();
     GitRunner runner = Activator.getDefault().gitRunner();
     statusService = new StatusService(runner);
     commitService = new CommitService(runner);
     rollbackService = new RollbackService(runner);
+    pushService = new PushService(runner);
 
     Composite root = new Composite(parent, SWT.NONE);
     GridLayout layout = new GridLayout(1, false);
@@ -128,7 +133,7 @@ public final class CommitView extends ViewPart {
     new CommitContextMenu(this, commitService).install();
 
     context = new RepositoryContext(getSite().getPage(), new RepositoryLocator(runner));
-    context.addListener(repository -> {
+    context.addListener(() -> {
       updateRepositoryCombo();
       refresh();
     });
@@ -150,6 +155,12 @@ public final class CommitView extends ViewPart {
     if (activationListener != null) {
       getSite().getPage().removePartListener(activationListener);
     }
+    if (refreshJob != null) {
+      refreshJob.cancel();
+    }
+    if (delayedRefresh != null) {
+      delayedRefresh.cancel();
+    }
     if (context != null) {
       context.dispose();
     }
@@ -162,6 +173,12 @@ public final class CommitView extends ViewPart {
       refreshJob.cancel();
     }
     Optional<GitRepository> repository = context.current();
+    if (context.error() != null && repository.isEmpty()) {
+      setContentDescription(context.error());
+      tree.setChanges(List.of());
+      panel.setAmendEnabled(false);
+      return;
+    }
     if (repository.isEmpty()) {
       setContentDescription("No Git repository. Select a project that is under Git.");
       tree.setChanges(List.of());
@@ -177,7 +194,7 @@ public final class CommitView extends ViewPart {
           if (!repository.equals(context.current())) {
             return;
           }
-          setContentDescription("");
+          setContentDescription(context.error() == null ? "" : context.error());
           tree.setChanges(changes);
           panel.setAmendEnabled(hasCommits);
           updateActions();
@@ -214,7 +231,10 @@ public final class CommitView extends ViewPart {
     void run(GitRepository repository) throws GitException;
   }
 
-  /** Runs a git operation in the background, shows its error, and refreshes the view after it. */
+  /**
+   * Runs a git operation in the background, shows its error, then syncs the workspace with the disk and refreshes
+   * the view. The workspace sync makes Project Explorer and the build see files that git changed.
+   */
   void runOperation(String name, GitOperation operation) {
     Optional<GitRepository> repository = context.current();
     if (repository.isEmpty()) {
@@ -227,6 +247,7 @@ public final class CommitView extends ViewPart {
       catch (GitException e) {
         asyncExec(() -> MessageDialog.openError(getSite().getShell(), name, e.userMessage()));
       }
+      WorkspaceSync.refresh(repository.get());
       asyncExec(this::refresh);
       return Status.OK_STATUS;
     });
@@ -246,15 +267,17 @@ public final class CommitView extends ViewPart {
     runOperation("Rollback", repo -> rollbackService.rollback(repo, versioned, deleteAdded));
   }
 
+  /** Commits in the background. The buttons stay disabled until the commit ends, so a double click commits once. */
   private void doCommit(boolean andPush) {
     Optional<GitRepository> repository = context.current();
-    if (repository.isEmpty()) {
+    if (repository.isEmpty() || panel.isBusy()) {
       return;
     }
     GitRepository repo = repository.get();
     String message = panel.message();
     List<FileChange> included = inclusion.included();
     CommitOptions options = panel.options();
+    panel.setBusy(true);
     Job job = Job.create("Committing", monitor -> {
       try {
         commitService.commit(repo, message, included, options);
@@ -262,6 +285,13 @@ public final class CommitView extends ViewPart {
       }
       catch (GitException e) {
         asyncExec(() -> MessageDialog.openError(getSite().getShell(), "Commit Failed", e.userMessage()));
+      }
+      finally {
+        asyncExec(() -> {
+          panel.setBusy(false);
+          updateButtons();
+          refresh();
+        });
       }
       return Status.OK_STATUS;
     });
@@ -274,7 +304,6 @@ public final class CommitView extends ViewPart {
     String subject = message.strip().lines().findFirst().orElse("");
     getViewSite().getActionBars().getStatusLineManager()
       .setMessage(fileCount + (fileCount == 1 ? " file committed: " : " files committed: ") + subject);
-    refresh();
     if (andPush) {
       openPushDialog(repo);
     }
@@ -305,6 +334,7 @@ public final class CommitView extends ViewPart {
         panel.focusMessage();
       });
     }
+    menu.addListener(SWT.Hide, e -> display.asyncExec(menu::dispose));
     menu.setLocation(screenLocation);
     menu.setVisible(true);
   }
@@ -314,19 +344,23 @@ public final class CommitView extends ViewPart {
                                       MESSAGE_HISTORY_SIZE);
   }
 
-  /** Opens the Push dialog after a commit and runs the push the user confirms. */
+  /** Loads the push target and the outgoing commits in the background, then opens the Push dialog. */
   private void openPushDialog(GitRepository repo) {
-    PushService pushService = new PushService(Activator.getDefault().gitRunner());
-    PushTarget target;
-    List<OutgoingCommit> outgoing;
-    try {
-      target = pushService.defaultTarget(repo);
-      outgoing = pushService.outgoing(repo, target);
-    }
-    catch (GitException e) {
-      MessageDialog.openError(getSite().getShell(), "Push", e.userMessage());
-      return;
-    }
+    Job load = Job.create("Preparing push", monitor -> {
+      try {
+        PushTarget target = pushService.defaultTarget(repo);
+        List<OutgoingCommit> outgoing = pushService.outgoing(repo, target);
+        asyncExec(() -> showPushDialog(repo, target, outgoing));
+      }
+      catch (GitException e) {
+        asyncExec(() -> MessageDialog.openError(getSite().getShell(), "Push", e.userMessage()));
+      }
+      return Status.OK_STATUS;
+    });
+    load.schedule();
+  }
+
+  private void showPushDialog(GitRepository repo, PushTarget target, List<OutgoingCommit> outgoing) {
     PushDialog dialog = new PushDialog(getSite().getShell(), repo, pushService, target, outgoing);
     if (dialog.open() != IDialogConstants.OK_ID) {
       return;
@@ -352,18 +386,29 @@ public final class CommitView extends ViewPart {
     job.schedule();
   }
 
+  /** Amend fills an empty message with the message of the last commit. The git call runs in the background. */
   private void onAmendChanged(boolean amend) {
-    if (amend && panel.message().isBlank()) {
-      context.current().ifPresent(repo -> {
-        try {
-          panel.setMessage(commitService.lastCommitMessage(repo));
-        }
-        catch (GitException e) {
-          MessageDialog.openError(getSite().getShell(), "Amend", e.userMessage());
-        }
-      });
-    }
     updateButtons();
+    Optional<GitRepository> repository = context.current();
+    if (!amend || !panel.message().isBlank() || repository.isEmpty()) {
+      return;
+    }
+    Job job = Job.create("Reading last commit message", monitor -> {
+      try {
+        String last = commitService.lastCommitMessage(repository.get());
+        asyncExec(() -> {
+          if (panel.isAmend() && panel.message().isBlank()) {
+            panel.setMessage(last);
+          }
+        });
+      }
+      catch (GitException e) {
+        asyncExec(() -> MessageDialog.openError(getSite().getShell(), "Amend", e.userMessage()));
+      }
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
   }
 
   private void updateButtons() {
@@ -462,16 +507,17 @@ public final class CommitView extends ViewPart {
     return found[0];
   }
 
+  /** Runs on the UI thread, if the view still exists. Safe to call from jobs, also during shutdown. */
   void asyncExec(Runnable runnable) {
-    Display display = getSite().getShell().getDisplay();
-    if (!display.isDisposed()) {
-      display.asyncExec(() -> {
-        Control control = tree.viewer().getControl();
-        if (!control.isDisposed()) {
-          runnable.run();
-        }
-      });
+    if (display == null || display.isDisposed()) {
+      return;
     }
+    display.asyncExec(() -> {
+      Control control = tree.viewer().getControl();
+      if (!control.isDisposed()) {
+        runnable.run();
+      }
+    });
   }
 
   /** The eye button: a drop-down with "Group By → Directory", as in IntelliJ. */

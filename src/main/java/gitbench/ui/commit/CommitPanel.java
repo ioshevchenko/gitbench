@@ -40,6 +40,7 @@ final class CommitPanel {
   private final Button commitAndPush;
   private boolean signOff;
   private String author;
+  private boolean busy;
 
   CommitPanel(Composite parent, Listener listener, BooleanSupplier hasIncludedChanges) {
     control = new Composite(parent, SWT.NONE);
@@ -138,10 +139,23 @@ final class CommitPanel {
     message.setFocus();
   }
 
+  boolean isBusy() {
+    return busy;
+  }
+
+  /** Locks the commit buttons while a commit runs. */
+  void setBusy(boolean on) {
+    busy = on;
+    if (on) {
+      commit.setEnabled(false);
+      commitAndPush.setEnabled(false);
+    }
+  }
+
   /** Commit is possible with a message and at least one checked file. Amend needs only a message. */
   void updateButtons(BooleanSupplier hasIncludedChanges) {
     boolean hasMessage = !message.getText().isBlank();
-    boolean enabled = hasMessage && (hasIncludedChanges.getAsBoolean() || isAmend());
+    boolean enabled = !busy && hasMessage && (hasIncludedChanges.getAsBoolean() || isAmend());
     commit.setEnabled(enabled);
     commitAndPush.setEnabled(enabled);
     String tip = hasMessage ? null : "Specify commit message";
@@ -166,6 +180,7 @@ final class CommitPanel {
       }
     });
     Rectangle bounds = item.getBounds();
+    menu.addListener(SWT.Hide, e -> menu.getDisplay().asyncExec(menu::dispose));
     menu.setLocation(bar.toDisplay(bounds.x, bounds.y + bounds.height));
     menu.setVisible(true);
   }

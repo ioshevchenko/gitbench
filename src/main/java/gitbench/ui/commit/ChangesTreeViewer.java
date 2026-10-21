@@ -85,13 +85,26 @@ final class ChangesTreeViewer {
     inclusion.retainOnly(changes);
     List<String> expandedPaths = pathsOf(viewer.getExpandedElements());
     List<String> selectedPaths = pathsOf(viewer.getStructuredSelection().toArray());
+    org.eclipse.swt.widgets.TreeItem top = viewer.getTree().getTopItem();
+    String topKey = top == null || top.getData() == null ? null : keyOf((ChangesTreeNode)top.getData());
     boolean first = viewer.getInput() == null;
-    viewer.setInput(ChangesTreeBuilder.build(changes, groupByDirectory));
-    if (first) {
-      viewer.expandToLevel(2);
+    viewer.getTree().setRedraw(false);
+    try {
+      viewer.setInput(ChangesTreeBuilder.build(changes, groupByDirectory));
+      if (first) {
+        viewer.expandToLevel(2);
+      }
+      else {
+        restore(expandedPaths, selectedPaths);
+      }
+      // The roots are always open, as in IntelliJ: new changes never hide under a collapsed "Changes".
+      for (Object root : (List<?>)viewer.getInput()) {
+        viewer.setExpandedState(root, true);
+      }
+      restoreTop(topKey);
     }
-    else {
-      restore(expandedPaths, selectedPaths);
+    finally {
+      viewer.getTree().setRedraw(true);
     }
     onInclusionChanged.run();
   }
@@ -121,6 +134,30 @@ final class ChangesTreeViewer {
     }
     viewer.setExpandedElements(expand.toArray());
     viewer.setSelection(new org.eclipse.jface.viewers.StructuredSelection(select));
+  }
+
+  /** Scrolls back to the node that was at the top before the refresh. */
+  private void restoreTop(String topKey) {
+    if (topKey == null) {
+      return;
+    }
+    for (org.eclipse.swt.widgets.TreeItem item : visibleItems(viewer.getTree().getItems())) {
+      if (item.getData() != null && topKey.equals(keyOf((ChangesTreeNode)item.getData()))) {
+        viewer.getTree().setTopItem(item);
+        return;
+      }
+    }
+  }
+
+  private static List<org.eclipse.swt.widgets.TreeItem> visibleItems(org.eclipse.swt.widgets.TreeItem[] items) {
+    List<org.eclipse.swt.widgets.TreeItem> all = new ArrayList<>();
+    for (org.eclipse.swt.widgets.TreeItem item : items) {
+      all.add(item);
+      if (item.getExpanded()) {
+        all.addAll(visibleItems(item.getItems()));
+      }
+    }
+    return all;
   }
 
   private static void walk(ChangesTreeNode node, java.util.function.Consumer<ChangesTreeNode> visitor) {

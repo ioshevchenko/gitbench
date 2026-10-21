@@ -45,6 +45,7 @@ public final class PushDialog extends Dialog {
   private Text targetBranch;
   private Table files;
   private PushTarget chosenTarget;
+  private OutgoingCommit shownCommit;
 
   public PushDialog(Shell parent, GitRepository repository, PushService pushService, PushTarget defaultTarget,
                     List<OutgoingCommit> commits) {
@@ -131,18 +132,38 @@ public final class PushDialog extends Dialog {
     return area;
   }
 
+  /** Loads the files of the commit in the background and shows them unless another commit got selected meanwhile. */
   private void showFiles(OutgoingCommit commit) {
+    shownCommit = commit;
     files.removeAll();
-    try {
-      for (FileChange change : pushService.changedFiles(repository, commit.shortHash())) {
-        TableItem item = new TableItem(files, SWT.NONE);
-        item.setText(change.path());
-        item.setForeground(StatusColors.foreground(change.kind()));
+    org.eclipse.swt.widgets.Display display = files.getDisplay();
+    org.eclipse.core.runtime.jobs.Job.create("Reading commit files", monitor -> {
+      List<FileChange> changes;
+      String error = null;
+      try {
+        changes = pushService.changedFiles(repository, commit.shortHash());
       }
-    }
-    catch (GitException e) {
-      new TableItem(files, SWT.NONE).setText(e.userMessage());
-    }
+      catch (GitException e) {
+        changes = List.of();
+        error = e.userMessage();
+      }
+      List<FileChange> result = changes;
+      String failure = error;
+      display.asyncExec(() -> {
+        if (files.isDisposed() || shownCommit != commit) {
+          return;
+        }
+        for (FileChange change : result) {
+          TableItem item = new TableItem(files, SWT.NONE);
+          item.setText(change.path());
+          item.setForeground(StatusColors.foreground(change.kind()));
+        }
+        if (failure != null) {
+          new TableItem(files, SWT.NONE).setText(failure);
+        }
+      });
+      return org.eclipse.core.runtime.Status.OK_STATUS;
+    }).schedule();
   }
 
   @Override
