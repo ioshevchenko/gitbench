@@ -22,7 +22,7 @@ import java.nio.file.Path;
  * The documents of a diff. A revision gets its own read-only document with LF line separators. The working file is
  * the shared file buffer, the same document as in an open C editor: edits, the dirty flag and Save are common.
  */
-final class SideDocuments {
+public final class SideDocuments {
   private static final ITextFileBufferManager MANAGER = FileBuffers.getTextFileBufferManager();
 
   private static boolean contextSet;
@@ -84,7 +84,7 @@ final class SideDocuments {
   }
 
   /** The encoding of the file in the workspace, or the workspace default for a file outside the projects. */
-  static Charset charsetOf(Path file) {
+  public static Charset charsetOf(Path file) {
     try {
       IFile[] files = ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toUri());
       String name = files.length > 0 ? files[0].getCharset() : ResourcesPlugin.getEncoding();

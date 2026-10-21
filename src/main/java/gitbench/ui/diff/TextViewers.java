@@ -16,7 +16,7 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.widgets.Composite;
 
 /** Creates the text viewers of the diff and repaints their word highlighting. */
-final class TextViewers {
+public final class TextViewers {
   private static final Color LIGHT_LINE_NUMBERS = new Color(0x99, 0x99, 0x99);
   private static final Color DARK_LINE_NUMBERS = new Color(0x60, 0x63, 0x66);
 
@@ -24,7 +24,7 @@ final class TextViewers {
   }
 
   /** A source viewer with line numbers and the editor text font. {@link CdtHighlighting} adds the syntax colors. */
-  static SourceViewer create(Composite parent, boolean dark, IDocument document, boolean editable) {
+  public static SourceViewer create(Composite parent, boolean dark, IDocument document, boolean editable) {
     CompositeRuler ruler = new CompositeRuler();
     LineNumberRulerColumn numbers = new LineNumberRulerColumn();
     numbers.setForeground(dark ? DARK_LINE_NUMBERS : LIGHT_LINE_NUMBERS);
@@ -45,7 +45,7 @@ final class TextViewers {
    * Paints the ruler in the background of the text. The line-number column is white by default, because SWT system
    * colors do not follow the dark theme.
    */
-  static void followEditorBackground(SourceViewer viewer, CompositeRuler ruler, LineNumberRulerColumn... columns) {
+  public static void followEditorBackground(SourceViewer viewer, CompositeRuler ruler, LineNumberRulerColumn... columns) {
     gitbench.ui.Theme.followBackground(viewer.getTextWidget(), background -> {
       for (LineNumberRulerColumn column : columns) {
         column.setBackground(background);
@@ -67,7 +67,7 @@ final class TextViewers {
    * Repaints the word highlighting. With a presentation reconciler the reconciler repaints and the presentation
    * listeners add the words; without one, an empty presentation goes through the listeners here.
    */
-  static void refreshPresentation(SourceViewer viewer, boolean hasReconciler) {
+  public static void refreshPresentation(SourceViewer viewer, boolean hasReconciler) {
     if (viewer.getTextWidget().isDisposed()) {
       return;
     }

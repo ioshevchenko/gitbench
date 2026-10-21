@@ -12,7 +12,7 @@ import java.util.Set;
  * C and C++ syntax highlighting from CDT in the diff columns. CDT is an optional dependency: without it the diff has
  * no syntax colors. Only this class touches {@link CdtSupport}, so the CDT classes load only when CDT is installed.
  */
-final class CdtHighlighting {
+public final class CdtHighlighting {
   /** The CDT C and C++ source extensions. Assembler files use another partitioning and stay plain. */
   private static final Set<String> EXTENSIONS = Set.of("c", "h", "cpp", "hpp", "cc", "cxx", "hh", "hxx", "c++", "h++", "inl");
 
@@ -20,7 +20,7 @@ final class CdtHighlighting {
   }
 
   /** Configures the viewer for the file. Returns true when a presentation reconciler now paints the text. */
-  static boolean configure(SourceViewer viewer, IDocument document, Path file) {
+  public static boolean configure(SourceViewer viewer, IDocument document, Path file) {
     if (!isCSource(file) || Platform.getBundle("org.eclipse.cdt.ui") == null) {
       return false;
     }
