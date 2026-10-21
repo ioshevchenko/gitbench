@@ -64,4 +64,37 @@ class ChangeMarkerColumnTest extends SwtTest {
     pump();
     assertThat(display.getShells()).as("the popup after the release").hasSize(shells + 1);
   }
+
+  @Test
+  void theColumnTakesTheEditorBackgroundNotTheRulerBackground() throws Exception {
+    // In the dark theme Eclipse leaves the ruler, as the folding column, light; the editor text is dark.
+    Path dir = Files.createTempDirectory("gitbench-column");
+    Path file = Files.writeString(dir.resolve("a.c"), "a\n");
+    EditorStub stub = new EditorStub(shell, file, new Document("a\n"));
+    org.eclipse.swt.graphics.Color dark = new org.eclipse.swt.graphics.Color(0x1E, 0x1F, 0x22);
+    stub.viewer.getTextWidget().setBackground(dark);
+    stub.ruler.getControl().setBackground(display.getSystemColor(org.eclipse.swt.SWT.COLOR_WHITE));
+    ChangeMarkerColumn column = new ChangeMarkerColumn();
+    column.setEditor(stub.editor);
+    org.eclipse.swt.widgets.Control control = column.createControl(stub.ruler, (org.eclipse.swt.widgets.Composite)stub.ruler.getControl());
+    control.setBounds(0, 0, ChangeMarkerPainter.WIDTH, 50);
+    show();
+
+    org.eclipse.swt.graphics.Image image = new org.eclipse.swt.graphics.Image(display, ChangeMarkerPainter.WIDTH, 50);
+    org.eclipse.swt.graphics.GC gc = new org.eclipse.swt.graphics.GC(control);
+    org.eclipse.swt.graphics.RGB rgb;
+    try {
+      control.redraw();
+      control.update();
+      gc.copyArea(image, 0, 0);
+      org.eclipse.swt.graphics.ImageData data = image.getImageData();
+      rgb = data.palette.getRGB(data.getPixel(1, 25));
+    }
+    finally {
+      gc.dispose();
+      image.dispose();
+    }
+
+    assertThat(rgb).isEqualTo(dark.getRGB());
+  }
 }

@@ -8,8 +8,11 @@ import java.util.List;
 
 /** Paints the change markers of a ruler column, as the IntelliJ LineStatusMarkerDrawUtil of the New UI. */
 public final class ChangeMarkerPainter {
-  /** The width of the column. */
-  public static final int WIDTH = 8;
+  /**
+   * The width of the column: the marker area and a gap of 3 px on the right. Eclipse leaves the folding column next to
+   * this one light in the dark theme, and without the gap the marker runs into it.
+   */
+  public static final int WIDTH = 10;
   /** The left edge of a marker: 1 px for brace highlighters and 2 px more for a 4 px marker (IDEA-286352). */
   private static final int MARKER_X = 3;
   /** Gutter.VcsChanges.width of the New UI. */

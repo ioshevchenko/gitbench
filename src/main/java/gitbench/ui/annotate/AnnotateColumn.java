@@ -282,7 +282,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   }
 
   private void paint(Event e) {
-    e.gc.setBackground(canvas.getParent().getBackground());
+    // The editor background, not the ruler one: in the dark theme Eclipse may leave ruler parts light.
+    e.gc.setBackground(viewer.getTextWidget().getBackground());
     e.gc.fillRectangle(canvas.getClientArea());
     if (blame != null && viewer.getDocument() != null) {
       painter.paint(e.gc, blame, colors, geometry, Theme.isDark(), Clock.systemDefaultZone(), canvas.getClientArea().width);

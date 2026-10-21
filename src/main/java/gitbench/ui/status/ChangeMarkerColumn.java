@@ -179,7 +179,8 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   }
 
   private void paint(Event e) {
-    e.gc.setBackground(canvas.getParent().getBackground());
+    // The editor background, not the ruler one: in the dark theme Eclipse may leave ruler parts light.
+    e.gc.setBackground(viewer.getTextWidget().getBackground());
     e.gc.fillRectangle(canvas.getClientArea());
     if (viewer.getDocument() != null) {
       ChangeMarkerPainter.paint(e.gc, ranges(), geometry, hovered, Theme.isDark());

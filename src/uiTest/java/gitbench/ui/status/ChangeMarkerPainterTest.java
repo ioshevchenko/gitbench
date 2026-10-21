@@ -82,6 +82,17 @@ class ChangeMarkerPainterTest extends SwtTest {
   }
 
   @Test
+  void markerKeepsAGapToTheFoldingColumn() {
+    ImageData data = paint(List.of(inserted(1, 3)), 0);
+
+    // Eclipse leaves the folding column right of this one light in the dark theme; the gap keeps the marker apart.
+    for (int x = ChangeMarkerPainter.WIDTH - 3; x < ChangeMarkerPainter.WIDTH; x++) {
+      assertThat(pixel(data, x, 16 + 8)).as("x = " + x).isEqualTo(WHITE);
+    }
+    assertThat(pixel(data, ChangeMarkerPainter.WIDTH - 4, 16 + 8)).isEqualTo(ADDED);
+  }
+
+  @Test
   void deletedRangeIsAShortBarOnTheBoundary() {
     ImageData data = paint(List.of(deleted(4)), -1);
 
