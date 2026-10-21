@@ -13,6 +13,11 @@
             category="gitbench.category"
             class="gitbench.ui.log.GitLogView"
             icon="icons/png/light/vcs.png"/>
+      <view id="gitbench.views.branches"
+            name="Branches"
+            category="gitbench.category"
+            class="gitbench.ui.branch.BranchesView"
+            icon="icons/png/light/vcs.png"/>
    </extension>
    <extension point="org.eclipse.ui.preferencePages">
       <page id="gitbench.preferences"
