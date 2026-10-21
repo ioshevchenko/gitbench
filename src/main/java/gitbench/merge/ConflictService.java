@@ -16,6 +16,8 @@ import java.util.List;
 /** Lists the conflicted files of a repository and resolves them by taking one side, through the git CLI. */
 public final class ConflictService {
   private static final int SHORT_HASH_LENGTH = 8;
+  private static final int INDEX_LOCK_ATTEMPTS = 3;
+  private static final int INDEX_LOCK_PAUSE_MS = 300;
 
   private final GitRunner runner;
 
@@ -28,14 +30,45 @@ public final class ConflictService {
     if (!status.ok()) {
       throw GitException.fromResult("git status", status);
     }
+    return parse(status.stdout());
+  }
+
+  /**
+   * Reads the unmerged entries of {@code git status --porcelain=v2 -z}. A rename record "2 ..." is followed by its
+   * original path as a separate NUL-terminated field, which is skipped, so a path such as "u old.c" is not taken for
+   * an unmerged entry.
+   */
+  static List<ConflictFile> parse(byte[] porcelainV2z) {
+    String[] records = new String(porcelainV2z, StandardCharsets.UTF_8).split("\0");
     List<ConflictFile> files = new ArrayList<>();
-    for (String record : new String(status.stdout(), StandardCharsets.UTF_8).split("\0")) {
-      if (record.startsWith("u ")) {
+    for (int i = 0; i < records.length; i++) {
+      String record = records[i];
+      if (record.startsWith("2 ")) {
+        i++;
+      }
+      else if (record.startsWith("u ")) {
         String[] fields = record.split(" ", 11);
         files.add(new ConflictFile(fields[10], ConflictType.fromXy(fields[1])));
       }
     }
     return files;
+  }
+
+  /**
+   * Finishes the operation after the last conflict, as the IntelliJ notifications do: continues a rebase, a
+   * cherry-pick or a revert, and commits a merge with its prepared message. No editor opens.
+   */
+  public void continueOperation(GitRepository repo, MergeContext context) throws GitException {
+    List<String> command = switch (context.operation()) {
+      case REBASE -> List.of("-c", "core.editor=true", "rebase", "--continue");
+      case CHERRY_PICK -> List.of("-c", "core.editor=true", "cherry-pick", "--continue");
+      case REVERT -> List.of("-c", "core.editor=true", "revert", "--continue");
+      case MERGE -> List.of("commit", "--no-edit");
+      case NONE -> List.of();
+    };
+    if (!command.isEmpty()) {
+      runner.runOk(repo.root(), command, null);
+    }
   }
 
   /** Finds the operation in progress from the files git keeps in its directory while it waits for a resolution. */
@@ -75,7 +108,35 @@ public final class ConflictService {
 
   /** Marks the file resolved with its content on disk, as IntelliJ does after Apply in the merge window. */
   public void markResolved(GitRepository repo, String path) throws GitException {
-    CommitService.runPathspec(runner, repo, List.of("add", "-A"), List.of(path));
+    retryOnIndexLock(() -> CommitService.runPathspec(runner, repo, List.of("add", "-A"), List.of(path)));
+  }
+
+  private interface GitCall {
+    void run() throws GitException;
+  }
+
+  /**
+   * Runs the call again when another git process, such as the status of a view, holds index.lock for a moment.
+   */
+  private static void retryOnIndexLock(GitCall call) throws GitException {
+    for (int attempt = 1; ; attempt++) {
+      try {
+        call.run();
+        return;
+      }
+      catch (GitException e) {
+        if (attempt >= INDEX_LOCK_ATTEMPTS || !String.valueOf(e.userMessage()).contains("index.lock")) {
+          throw e;
+        }
+        try {
+          Thread.sleep(INDEX_LOCK_PAUSE_MS);
+        }
+        catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw e;
+        }
+      }
+    }
   }
 
   /** Takes git stage 2 ({@code ours}) or stage 3 for each file; a side without the file removes it. */
@@ -87,18 +148,19 @@ public final class ConflictService {
       (deleted ? remove : keep).add(file.path());
     }
     if (!keep.isEmpty()) {
-      CommitService.runPathspec(runner, repo, List.of("checkout", ours ? "--ours" : "--theirs"), keep);
-      CommitService.runPathspec(runner, repo, List.of("add", "-A"), keep);
+      retryOnIndexLock(() -> CommitService.runPathspec(runner, repo, List.of("checkout", ours ? "--ours" : "--theirs"), keep));
+      retryOnIndexLock(() -> CommitService.runPathspec(runner, repo, List.of("add", "-A"), keep));
     }
     if (!remove.isEmpty()) {
-      CommitService.runPathspec(runner, repo, List.of("rm", "-q", "--ignore-unmatch"), remove);
+      retryOnIndexLock(() -> CommitService.runPathspec(runner, repo, List.of("rm", "-q", "--ignore-unmatch"), remove));
     }
   }
 
   /** A branch name for the commit, as IntelliJ shows it, or the short hash. */
   private String nameOf(GitRepository repo, String hash) throws GitException {
-    GitResult name = runner.run(repo.root(), List.of("name-rev", "--name-only", "--no-undefined", "--refs=refs/heads/*", hash), null);
-    String text = name.ok() ? name.stdoutText().trim() : "";
+    GitResult name = runner.run(repo.root(), List.of("name-rev", "--name-only", "--no-undefined", "--refs=refs/heads/*",
+                                                     "--refs=refs/remotes/*", hash), null);
+    String text = name.ok() ? name.stdoutText().trim().replaceFirst("^remotes/", "") : "";
     return text.isEmpty() || text.contains("~") || text.contains("^") ? shortHash(hash) : text;
   }
 

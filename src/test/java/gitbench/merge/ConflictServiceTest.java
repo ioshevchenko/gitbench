@@ -164,4 +164,75 @@ class ConflictServiceTest {
 
     assertThat(service.list(repository)).isEmpty();
   }
+
+  @Test
+  void renameRecordsDoNotLookLikeConflicts() {
+    String status = "2 R. N... 100644 100644 100644 1111 1111 R100 renamed.c" + (char)0 + "u old.c" + (char)0
+                    + "u UU N... 100644 100644 100644 100644 1111 2222 3333 a.c" + (char)0;
+
+    assertThat(ConflictService.parse(status.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+      .containsExactly(new ConflictFile("a.c", ConflictType.BOTH_MODIFIED));
+  }
+
+  @Test
+  void noOperationHasGenericTitles() {
+    MergeContext context = new MergeContext(MergeOperation.NONE, "main", "");
+
+    assertThat(context.yoursTitle()).isEqualTo("Your version");
+    assertThat(context.theirsTitle()).isEqualTo("Their version");
+  }
+
+  @Test
+  void mergeOfARemoteBranchNamesIt() throws Exception {
+    TempRepo remote = divergedRepo();
+    TempRepo clone = TempRepo.cloneOf(remote);
+    clone.git("checkout", "-q", "main");
+    clone.gitMayFail("merge", "-q", "origin/feature");
+
+    MergeContext context = service.context(new GitRepository(clone.root()));
+
+    assertThat(context.description()).isEqualTo("Merging branch origin/feature into branch main");
+  }
+
+  @Test
+  void continueRebaseAfterTheLastConflict() throws Exception {
+    TempRepo repo = divergedRepo();
+    repo.git("checkout", "-q", "feature");
+    repo.gitMayFail("rebase", "main");
+    GitRepository repository = new GitRepository(repo.root());
+    repo.write("a.c", "merged\n");
+    service.markResolved(repository, "a.c");
+
+    service.continueOperation(repository, service.context(repository));
+
+    assertThat(service.context(repository).operation()).isEqualTo(MergeOperation.NONE);
+    assertThat(repo.git("log", "-1", "--format=%s").trim()).isEqualTo("theirs");
+  }
+
+  @Test
+  void continueCherryPickAfterTheLastConflict() throws Exception {
+    TempRepo repo = divergedRepo();
+    repo.gitMayFail("cherry-pick", repo.git("rev-parse", "feature").trim());
+    GitRepository repository = new GitRepository(repo.root());
+    repo.write("a.c", "merged\n");
+    service.markResolved(repository, "a.c");
+
+    service.continueOperation(repository, service.context(repository));
+
+    assertThat(service.context(repository).operation()).isEqualTo(MergeOperation.NONE);
+    assertThat(repo.git("log", "-1", "--format=%s").trim()).isEqualTo("theirs");
+  }
+
+  @Test
+  void continueMergeCommitsIt() throws Exception {
+    TempRepo repo = mergeConflict();
+    GitRepository repository = new GitRepository(repo.root());
+    repo.write("a.c", "merged\n");
+    service.markResolved(repository, "a.c");
+
+    service.continueOperation(repository, service.context(repository));
+
+    assertThat(service.context(repository).operation()).isEqualTo(MergeOperation.NONE);
+    assertThat(repo.git("log", "-1", "--format=%P").trim().split(" ")).hasSize(2);
+  }
 }

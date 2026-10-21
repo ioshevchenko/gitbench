@@ -29,7 +29,8 @@ public record MergeContext(MergeOperation operation, String currentBranch, Strin
     return switch (operation) {
       case CHERRY_PICK, REVERT -> "Local Changes";
       case REBASE -> "Rebasing " + currentBranch;
-      default -> "Your version, branch " + currentBranch;
+      case MERGE -> "Your version, branch " + currentBranch;
+      case NONE -> "Your version";
     };
   }
 
@@ -39,7 +40,9 @@ public record MergeContext(MergeOperation operation, String currentBranch, Strin
       case CHERRY_PICK -> "Changes from cherry-pick " + theirsName;
       case REVERT -> "Changes from revert " + theirsName;
       case REBASE -> "Already rebased commits and commits from " + theirsName;
-      default -> "Changes from " + theirsName;
+      case MERGE -> "Changes from " + theirsName;
+      // A conflict without an operation in progress, for example after "git stash pop", has no name for the sides.
+      case NONE -> "Their version";
     };
   }
 
