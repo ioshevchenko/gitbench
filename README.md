@@ -37,12 +37,12 @@ The IntelliJ shortcuts work only inside the Gitbench windows: `F7` / `Shift+F7`,
 In the IDE: **Help → Install New Software... → Add...**, and give the update site:
 
 ```
-https://<owner>.github.io/gitbench/
+https://ioshevchenko.github.io/gitbench/
 ```
 
 Select **Gitbench**, finish the wizard and restart the IDE. Updates come through **Help → Check for Updates**.
 
-Each [release](../../releases) also has the update site as a zip (`Add... → Archive...`) and the plugin jar.
+Each [release](https://github.com/ioshevchenko/gitbench/releases) also has the update site as a zip (`Add... → Archive...`) and the plugin jar.
 
 ## Syntax colors
 

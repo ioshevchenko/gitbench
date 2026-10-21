@@ -219,7 +219,7 @@ tasks.register('uiTest', Test) {
 
 // The p2 update site: Help -> Install New Software in the IDE. The p2 publisher of an Eclipse installation turns the
 // plugin and the feature into a repository: -PeclipseHome=<folder>, or the IDE in cubeIdeHome.
-def repository = findProperty('githubRepository') ?: 'OWNER/gitbench'
+def repository = findProperty('githubRepository') ?: 'ioshevchenko/gitbench'
 
 def featureJar = tasks.register('featureJar', Jar) {
     group = 'gitbench'
