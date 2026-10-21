@@ -1,0 +1,760 @@
+package gitbench.ui.log;
+
+import gitbench.git.FileChange;
+import gitbench.git.GitException;
+import gitbench.git.GitRepository;
+import gitbench.git.GitResult;
+import gitbench.git.GitRunner;
+import gitbench.git.RepositoryLocator;
+import gitbench.log.CommitDetails;
+import gitbench.log.CommitFilesLoader;
+import gitbench.log.DetailsLoader;
+import gitbench.log.FilterService;
+import gitbench.log.GitRef;
+import gitbench.log.LogFilter;
+import gitbench.log.LogModel;
+import gitbench.log.RefsLoader;
+import gitbench.log.TopologyLoader;
+import gitbench.ui.Activator;
+import gitbench.ui.GitbenchIcons;
+import gitbench.ui.GitbenchIcons.Icon;
+import gitbench.ui.RepositoryContext;
+import gitbench.ui.RepositoryEvents;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.jface.action.Action;
+import org.eclipse.jface.action.IAction;
+import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.action.IToolBarManager;
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.swt.widgets.ToolItem;
+import org.eclipse.ui.IPartListener2;
+import org.eclipse.ui.IViewPart;
+import org.eclipse.ui.IViewSite;
+import org.eclipse.ui.IWorkbenchPartReference;
+import org.eclipse.ui.IWorkbenchPartSite;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+/**
+ * The content of the Git Log: the filter bar on top, the commit table with the graph on the left, the files and the
+ * details of the selected commit on the right, as the Log tab of the IntelliJ Git tool window. The Git Log view and
+ * the Git view show it.
+ */
+public final class LogPanel {
+  private static final String PREF_INTELLISORT = "log.intelliSort";
+  private static final String PREF_SHOW_DETAILS = "log.showDetails";
+  private static final String PREF_SHOW_FILES = "log.showFiles";
+  private static final int DETAILS_BATCH = 1000;
+
+  private GitRunner runner;
+  private RefsLoader refsLoader;
+  private TopologyLoader topologyLoader;
+  private DetailsLoader detailsLoader;
+  private FilterService filterService;
+  private CommitFilesLoader filesLoader;
+  private RepositoryContext context;
+  private Display display;
+  private final IViewPart part;
+  private final Consumer<String> description;
+  private final Composite root;
+
+  private FilterBar filterBar;
+  private CommitTable table;
+  private SashForm rightSide;
+  private SashForm mainSash;
+  private CommitFilesTree files;
+  /** The commit whose files the file tree shows, and its parents; the diff of a file compares with the first parent. */
+  private String filesCommit;
+  private List<String> filesParents = List.of();
+  private CommitDetailsPanel detailsPanel;
+  private LogContextMenu contextMenu;
+
+  private GitRepository loadedRepository;
+  private List<GitRef> refs = List.of();
+  private LogModel fullModel;
+  private String myEmail;
+  private Range range;
+  private final Map<String, CommitDetails> details = new ConcurrentHashMap<>();
+  private final Set<String> pendingDetails = ConcurrentHashMap.newKeySet();
+  /** "In N branches" per commit; cleared when the refs change. */
+  private final Map<String, List<String>> branchesOfCommit = new ConcurrentHashMap<>();
+  private static final int SELECTION_DELAY_MS = 150;
+  private int selectionDelayGeneration;
+  private int loadGeneration;
+  private int filterGeneration;
+  private int selectionGeneration;
+  private IPartListener2 activationListener;
+  private final Consumer<GitRepository> repositoryListener = repository -> asyncExec(() -> {
+    if (context.current().equals(Optional.of(repository))) {
+      reload(true);
+    }
+  });
+
+  /** A "Compare with Current" range: commits of {@code include} that are not in {@code exclude}. */
+  private record Range(String exclude, String include) {
+  }
+
+  /** Shows the log in {@code parent}, for the view {@code part}; {@code description} shows the errors over the view. */
+  public LogPanel(Composite parent, IViewPart part, Consumer<String> description) {
+    this.part = part;
+    this.description = description;
+    display = parent.getDisplay();
+    runner = Activator.getDefault().gitRunner();
+    refsLoader = new RefsLoader(runner);
+    topologyLoader = new TopologyLoader(runner);
+    detailsLoader = new DetailsLoader(runner);
+    filterService = new FilterService(runner);
+    filesLoader = new CommitFilesLoader(runner);
+    IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+    store.setDefault(PREF_INTELLISORT, true);
+    store.setDefault(PREF_SHOW_DETAILS, true);
+    store.setDefault(PREF_SHOW_FILES, true);
+
+    root = new Composite(parent, SWT.NONE);
+    GridLayout layout = new GridLayout(1, false);
+    layout.marginWidth = 0;
+    layout.marginHeight = 0;
+    layout.verticalSpacing = 0;
+    root.setLayout(layout);
+
+    filterBar = new FilterBar(root, new FilterBar.Listener() {
+      @Override
+      public void filterChanged(LogFilter filter) {
+        applyFilter();
+      }
+
+      @Override
+      public void intelliSortChanged(boolean on) {
+        store.setValue(PREF_INTELLISORT, on);
+        reload(true);
+      }
+
+      @Override
+      public void rangeCleared() {
+        range = null;
+        filterBar.setRange(null);
+        applyFilter();
+      }
+    }, () -> refs, this::knownAuthors, () -> myEmail, () -> context.current().map(GitRepository::root).orElse(null));
+    filterBar.control().setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+    filterBar.setIntelliSort(store.getBoolean(PREF_INTELLISORT));
+
+    mainSash = new SashForm(root, SWT.HORIZONTAL);
+    mainSash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+    table = new CommitTable(mainSash, new CommitTable.DetailsSource() {
+      @Override
+      public CommitDetails get(String hash) {
+        return details.get(hash);
+      }
+
+      @Override
+      public void request(int fromRow, int toRow) {
+        requestDetails(fromRow);
+      }
+    }, () -> myEmail);
+    rightSide = new SashForm(mainSash, SWT.VERTICAL);
+    files = new CommitFilesTree(rightSide);
+    files.viewer().addDoubleClickListener(e -> {
+      if (files.onlyFilesSelected()) {
+        showDiff(files.selectedFiles());
+      }
+    });
+    installFilesMenu();
+    detailsPanel = new CommitDetailsPanel(rightSide, files.viewer().getControl());
+    rightSide.setWeights(50, 50);
+    mainSash.setWeights(70, 30);
+    updateRightSide();
+
+    table.table().addListener(SWT.Selection, e -> scheduleShowSelection());
+    table.table().addListener(SWT.KeyDown, this::onKey);
+    contextMenu = new LogContextMenu(this);
+    contextMenu.install(table.table());
+
+    context = new RepositoryContext(getSite().getPage(), new RepositoryLocator(runner));
+    context.addListener(() -> reload(false));
+    RepositoryEvents.listen(repositoryListener);
+    activationListener = new IPartListener2() {
+      @Override
+      public void partActivated(IWorkbenchPartReference ref) {
+        if (ref.getPart(false) == part) {
+          reload(false);
+        }
+      }
+    };
+    getSite().getPage().addPartListener(activationListener);
+    reload(false);
+  }
+
+  public Control control() {
+    return root;
+  }
+
+  IWorkbenchPartSite getSite() {
+    return part.getSite();
+  }
+
+  private IViewSite getViewSite() {
+    return (IViewSite) part.getSite();
+  }
+
+  private void setContentDescription(String text) {
+    description.accept(text);
+  }
+
+  public void setFocus() {
+    table.table().setFocus();
+  }
+
+  public void dispose() {
+    RepositoryEvents.unlisten(repositoryListener);
+    if (activationListener != null) {
+      getSite().getPage().removePartListener(activationListener);
+    }
+    if (context != null) {
+      context.dispose();
+    }
+  }
+
+  /** Shows only the given branches, as a selection in the Branches view does. */
+  public void showRefFilter(List<String> branches) {
+    filterBar.setFilter(filterBar.filter().withBranches(branches));
+    applyFilter();
+  }
+
+  /** Selects the commit, and clears the filters when they hide it. */
+  public void selectCommit(String hash) {
+    if (!table.select(hash) && fullModel != null && fullModel.rowOf(hash) >= 0) {
+      filterBar.setFilter(LogFilter.none());
+      range = null;
+      filterBar.setRange(null);
+      table.setModel(fullModel);
+      table.select(hash);
+    }
+  }
+
+  /** Compare with Current: shows the commits of {@code includeRef} that are not in {@code excludeRef}. */
+  public void showRange(String excludeRef, String includeRef) {
+    range = new Range(excludeRef, includeRef);
+    filterBar.setRange(shortName(excludeRef) + ".." + shortName(includeRef));
+    applyFilter();
+  }
+
+  private static String shortName(String ref) {
+    return ref.replaceFirst("^refs/heads/", "").replaceFirst("^refs/remotes/", "").replaceFirst("^refs/tags/", "");
+  }
+
+  public LogFilter currentFilter() {
+    return filterBar.filter();
+  }
+
+  Optional<GitRepository> currentRepository() {
+    return context.current();
+  }
+
+  List<GitRef> refs() {
+    return refs;
+  }
+
+  LogModel shownModel() {
+    return table.model();
+  }
+
+  List<String> selectedHashes() {
+    return table.selectedHashes();
+  }
+
+  CommitDetails detailsOf(String hash) {
+    return details.get(hash);
+  }
+
+  /** Reloads refs and, when they changed or {@code force} is set, the whole graph. */
+  public void reload(boolean force) {
+    Optional<GitRepository> repository = context.current();
+    if (repository.isEmpty()) {
+      setContentDescription(context.error() != null ? context.error() : "No Git repository. Select a project that is under Git.");
+      return;
+    }
+    GitRepository repo = repository.get();
+    boolean intelliSort = Activator.getDefault().getPreferenceStore().getBoolean(PREF_INTELLISORT);
+    int generation = ++loadGeneration;
+    Job job = Job.create("Loading Git log", monitor -> {
+      try {
+        List<GitRef> newRefs = refsLoader.load(repo);
+        boolean sameRepository = repo.equals(loadedRepository);
+        if (!force && sameRepository && newRefs.equals(refs) && fullModel != null && fullModel.intelliSort() == intelliSort) {
+          return Status.OK_STATUS;
+        }
+        LogModel model = LogModel.build(topologyLoader.load(repo, newRefs), newRefs, intelliSort);
+        String email = readEmail(repo);
+        asyncExec(() -> {
+          if (generation != loadGeneration) {
+            return;
+          }
+          if (!sameRepository) {
+            details.clear();
+            range = null;
+            filterBar.setRange(null);
+            filterBar.setFilter(LogFilter.none());
+          }
+          loadedRepository = repo;
+          refs = newRefs;
+          fullModel = model;
+          myEmail = email;
+          branchesOfCommit.clear();
+          setContentDescription("");
+          applyFilter();
+        });
+      }
+      catch (GitException e) {
+        asyncExec(() -> setContentDescription(e.userMessage()));
+      }
+      catch (RuntimeException e) {
+        // Unexpected git output must not leave an empty log without a word.
+        Activator.getDefault().getLog().error("Cannot load the Git log", e);
+        asyncExec(() -> setContentDescription("Cannot load the Git log: " + e));
+      }
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
+  }
+
+  /** Runs the commit filters in the background and shows the filtered graph. */
+  private void applyFilter() {
+    LogModel model = fullModel;
+    GitRepository repo = loadedRepository;
+    if (model == null || repo == null) {
+      return;
+    }
+    LogFilter filter = filterBar.filter();
+    Range activeRange = range;
+    int generation = ++filterGeneration;
+    if (!filter.hasCommitFilter() && activeRange == null && filter.branches().isEmpty()) {
+      table.setModel(model);
+      showSelection();
+      return;
+    }
+    Job job = Job.create("Filtering Git log", monitor -> {
+      try {
+        Set<Integer> heads = null;
+        if (!filter.branches().isEmpty()) {
+          heads = refs.stream().filter(ref -> filter.branches().contains(ref.name()))
+            .map(ref -> model.commitIndexOf(ref.hash())).filter(i -> i >= 0).collect(Collectors.toSet());
+        }
+        Set<String> matched = filterService.matching(repo, filter);
+        if (activeRange != null) {
+          Set<String> inRange = filterService.range(repo, activeRange.exclude(), activeRange.include());
+          if (matched == null) {
+            matched = inRange;
+          }
+          else {
+            matched.retainAll(inRange);
+          }
+        }
+        Set<Integer> matchedIds = null;
+        if (matched != null) {
+          matchedIds = new HashSet<>();
+          for (String hash : matched) {
+            int index = model.commitIndexOf(hash);
+            if (index >= 0) {
+              matchedIds.add(index);
+            }
+          }
+        }
+        LogModel filtered = model.filtered(heads, matchedIds);
+        asyncExec(() -> {
+          if (generation == filterGeneration) {
+            table.setModel(filtered);
+            showSelection();
+          }
+        });
+      }
+      catch (GitException e) {
+        asyncExec(() -> setContentDescription(e.userMessage()));
+      }
+      catch (RuntimeException e) {
+        Activator.getDefault().getLog().error("Cannot filter the Git log", e);
+        asyncExec(() -> setContentDescription("Cannot filter the Git log: " + e));
+      }
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
+  }
+
+  /** Loads the details of up to {@value #DETAILS_BATCH} rows starting a little above {@code row}. */
+  private void requestDetails(int row) {
+    LogModel model = table.model();
+    GitRepository repo = loadedRepository;
+    if (model == null || repo == null) {
+      return;
+    }
+    int from = Math.max(0, row - 100);
+    int to = Math.min(model.rowCount(), from + DETAILS_BATCH);
+    List<String> missing = new ArrayList<>();
+    for (int i = from; i < to; i++) {
+      String hash = model.hashAt(i);
+      if (!details.containsKey(hash) && pendingDetails.add(hash)) {
+        missing.add(hash);
+      }
+    }
+    if (missing.isEmpty()) {
+      return;
+    }
+    Job job = Job.create("Loading commit details", monitor -> {
+      try {
+        details.putAll(detailsLoader.load(repo, missing));
+      }
+      catch (GitException e) {
+        asyncExec(() -> setContentDescription(e.userMessage()));
+      }
+      finally {
+        missing.forEach(pendingDetails::remove);
+      }
+      asyncExec(() -> {
+        table.table().redraw();
+        // Refresh the panel only when this batch brought the selected commit; otherwise it would flicker.
+        List<String> selected = table.selectedHashes();
+        if (selected.size() == 1 && missing.contains(selected.get(0)) && details.containsKey(selected.get(0))) {
+          detailsPanel.show(details.get(selected.get(0)), branchesOfCommit.get(selected.get(0)));
+        }
+      });
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
+  }
+
+  /** Waits a moment before the git calls for the selection, so that holding an arrow key does not start one per row. */
+  private void scheduleShowSelection() {
+    int generation = ++selectionDelayGeneration;
+    display.timerExec(SELECTION_DELAY_MS, () -> {
+      if (generation == selectionDelayGeneration && !table.table().isDisposed()) {
+        showSelection();
+      }
+    });
+  }
+
+  /** Updates the files and the details panel for the selected commits. */
+  private void showSelection() {
+    List<String> hashes = table.selectedHashes();
+    int generation = ++selectionGeneration;
+    if (hashes.isEmpty()) {
+      filesCommit = null;
+      files.setFiles(List.of());
+      detailsPanel.clear();
+      return;
+    }
+    if (hashes.size() > 1) {
+      filesCommit = null;
+      files.setFiles(List.of());
+      List<CommitDetails> known = hashes.stream().map(details::get).filter(d -> d != null).toList();
+      detailsPanel.showMany(known);
+      return;
+    }
+    String hash = hashes.get(0);
+    CommitDetails d = details.get(hash);
+    if (d == null) {
+      detailsPanel.showLoading();
+    }
+    else {
+      detailsPanel.show(d, null);
+    }
+    GitRepository repo = loadedRepository;
+    Job job = Job.create("Loading commit", monitor -> {
+      try {
+        List<FileChange> changed = filesLoader.load(repo, hash);
+        CommitDetails loaded = d != null ? d : detailsLoader.load(repo, List.of(hash)).get(hash);
+        asyncExec(() -> {
+          if (generation == selectionGeneration) {
+            filesCommit = hash;
+            filesParents = loaded != null ? loaded.parents() : modelParents(hash);
+            files.setFiles(changed);
+            if (loaded != null) {
+              details.put(hash, loaded);
+              detailsPanel.show(loaded, null);
+            }
+          }
+        });
+        List<String> cached = branchesOfCommit.get(hash);
+        List<String> branches = cached != null ? cached : containingBranches(repo, hash);
+        branchesOfCommit.put(hash, branches);
+        asyncExec(() -> {
+          if (generation == selectionGeneration && loaded != null) {
+            detailsPanel.show(loaded, branches);
+          }
+        });
+      }
+      catch (GitException e) {
+        asyncExec(() -> detailsPanel.control().setText(e.userMessage()));
+      }
+      return Status.OK_STATUS;
+    });
+    job.setSystem(true);
+    job.schedule();
+  }
+
+  private List<String> containingBranches(GitRepository repo, String hash) throws GitException {
+    GitResult result = runner.run(repo.root(), List.of("branch", "-a", "--contains", hash, "--format=%(refname:short)"), null);
+    if (!result.ok()) {
+      return List.of();
+    }
+    return result.stdoutText().lines().map(String::trim).filter(s -> !s.isEmpty() && !s.endsWith("/HEAD")).toList();
+  }
+
+  private String readEmail(GitRepository repo) {
+    try {
+      GitResult result = runner.run(repo.root(), List.of("config", "--get", "user.email"), null);
+      return result.ok() ? result.stdoutText().trim() : null;
+    }
+    catch (GitException e) {
+      return null;
+    }
+  }
+
+  private List<String> knownAuthors() {
+    Set<String> names = new LinkedHashSet<>();
+    details.values().forEach(d -> names.add(d.authorName()));
+    return new ArrayList<>(names);
+  }
+
+  /** The context menu and the keys of the commit file tree: Show Diff (Ctrl+D) and Jump to Source (F4). */
+  private void installFilesMenu() {
+    org.eclipse.swt.widgets.Control control = files.viewer().getControl();
+    org.eclipse.jface.action.MenuManager manager = new org.eclipse.jface.action.MenuManager();
+    manager.setRemoveAllWhenShown(true);
+    manager.addMenuListener(menu -> {
+      List<FileChange> selected = files.selectedFiles();
+      menu.add(menuAction("Show Diff\tCtrl+D", !selected.isEmpty(), () -> showDiff(selected)));
+      menu.add(menuAction("Jump to Source\tF4", !selected.isEmpty(), this::openSelectedFiles));
+    });
+    control.setMenu(manager.createContextMenu(control));
+    control.addListener(SWT.KeyDown, e -> {
+      if (e.keyCode == 'd' && (e.stateMask & SWT.MODIFIER_MASK) == SWT.MOD1) {
+        showDiff(files.selectedFiles());
+        e.doit = false;
+      }
+      else if (e.keyCode == SWT.F4 && (e.stateMask & SWT.MODIFIER_MASK) == 0) {
+        openSelectedFiles();
+        e.doit = false;
+      }
+    });
+  }
+
+  private static org.eclipse.jface.action.Action menuAction(String text, boolean enabled, Runnable run) {
+    org.eclipse.jface.action.Action action = new org.eclipse.jface.action.Action(text) {
+      @Override
+      public void run() {
+        run.run();
+      }
+    };
+    action.setEnabled(enabled);
+    return action;
+  }
+
+  /**
+   * Opens the diff of the selected files of the shown commit against its first parent. One selected file starts a
+   * chain of all files of the commit, several selected files make the chain themselves.
+   */
+  void showDiff(List<FileChange> selected) {
+    GitRepository repo = loadedRepository;
+    String hash = filesCommit;
+    if (repo == null || hash == null || selected.isEmpty()) {
+      return;
+    }
+    List<String> parents = filesParents;
+    List<FileChange> chainFiles = selected.size() > 1 ? selected : files.filesInTreeOrder();
+    List<gitbench.diff.DiffRequest> chain = chainFiles.stream()
+      .map(c -> gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, c)).toList();
+    gitbench.diff.DiffRequest first = gitbench.diff.DiffRequests.forCommitFile(repo, hash, parents, selected.get(0));
+    gitbench.ui.diff.DiffOpener.open(getSite().getPage(), chain, gitbench.diff.DiffRequests.chain(chain, first));
+  }
+
+  /** The parents from the log graph, when the commit details did not load; the diff then still compares with them. */
+  private List<String> modelParents(String hash) {
+    gitbench.log.LogModel model = table.model();
+    return model == null ? List.of() : model.parentsOf(hash);
+  }
+
+  /** Jump to Source: opens the working tree files of the selected commit files. */
+  void openSelectedFiles() {
+    gitbench.ui.commit.OpenFiles.open(getSite().getPage(), context.current(), files.selectedFiles());
+  }
+
+  private void onKey(Event e) {
+    if ((e.stateMask & SWT.MOD1) != 0 && (e.keyCode == 'f' || e.keyCode == 'F')) {
+      filterBar.focusText();
+      e.doit = false;
+    }
+    else if ((e.stateMask & SWT.MOD1) != 0 && (e.keyCode == 'c' || e.keyCode == 'C')) {
+      copyHashes();
+      e.doit = false;
+    }
+  }
+
+  void copyHashes() {
+    List<String> hashes = table.selectedHashes();
+    if (hashes.isEmpty()) {
+      return;
+    }
+    Clipboard clipboard = new Clipboard(display);
+    try {
+      clipboard.setContents(new Object[]{String.join(System.lineSeparator(), hashes)}, new Transfer[]{TextTransfer.getInstance()});
+    }
+    finally {
+      clipboard.dispose();
+    }
+  }
+
+  void select(String hash) {
+    table.select(hash);
+  }
+
+  private void updateRightSide() {
+    IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+    boolean showFiles = store.getBoolean(PREF_SHOW_FILES);
+    boolean showDetails = store.getBoolean(PREF_SHOW_DETAILS);
+    files.viewer().getControl().setVisible(showFiles);
+    detailsPanel.control().setVisible(showDetails);
+    if (!showFiles && !showDetails) {
+      mainSash.setMaximizedControl(table.table());
+    }
+    else {
+      mainSash.setMaximizedControl(null);
+      rightSide.setMaximizedControl(!showFiles ? detailsPanel.control() : !showDetails ? files.viewer().getControl() : null);
+    }
+  }
+
+  /** Adds Refresh, Fetch, and View Options to the toolbar of the view. */
+  public void contributeToolbar(IToolBarManager toolbar) {
+    toolbar.add(action("Refresh", Icon.REFRESH, () -> reload(true)));
+    toolbar.add(action("Fetch", Icon.FETCH, this::fetch));
+    toolbar.add(new ViewOptionsAction());
+  }
+
+  private void fetch() {
+    context.current().ifPresent(repo -> {
+      Job job = Job.create("Fetching", monitor -> {
+        try {
+          GitResult result = runner.run(repo.root(), List.of("fetch", "--all", "--prune"), null);
+          asyncExec(() -> getViewSite().getActionBars().getStatusLineManager()
+            .setMessage(result.ok() ? "Fetched all remotes" : "Fetch failed: " + result.stderr().trim()));
+        }
+        catch (GitException e) {
+          asyncExec(() -> getViewSite().getActionBars().getStatusLineManager().setErrorMessage(e.userMessage()));
+        }
+        RepositoryEvents.fire(repo);
+        return Status.OK_STATUS;
+      });
+      job.schedule();
+    });
+  }
+
+  private static Action action(String text, Icon icon, Runnable run) {
+    Action action = new Action(text) {
+      @Override
+      public void run() {
+        run.run();
+      }
+    };
+    action.setToolTipText(text);
+    action.setImageDescriptor(GitbenchIcons.descriptor(icon));
+    return action;
+  }
+
+  void asyncExec(Runnable runnable) {
+    if (display == null || display.isDisposed()) {
+      return;
+    }
+    display.asyncExec(() -> {
+      Control control = table.table();
+      if (!control.isDisposed()) {
+        runnable.run();
+      }
+    });
+  }
+
+  /** The eye button: IntelliSort, Show Details, Show Changed Files. */
+  private final class ViewOptionsAction extends Action implements IMenuCreator {
+    private Menu menu;
+
+    ViewOptionsAction() {
+      super("View Options", IAction.AS_DROP_DOWN_MENU);
+      setToolTipText("View Options");
+      setImageDescriptor(GitbenchIcons.descriptor(Icon.VIEW_OPTIONS));
+      setMenuCreator(this);
+    }
+
+    @Override
+    public void runWithEvent(Event event) {
+      if (event.widget instanceof ToolItem item) {
+        Menu dropDown = getMenu(item.getParent());
+        Rectangle bounds = item.getBounds();
+        dropDown.setLocation(item.getParent().toDisplay(bounds.x, bounds.y + bounds.height));
+        dropDown.setVisible(true);
+      }
+    }
+
+    @Override
+    public Menu getMenu(Control parent) {
+      dispose();
+      menu = new Menu(parent);
+      IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+      toggle(menu, "IntelliSort", PREF_INTELLISORT, () -> {
+        filterBar.setIntelliSort(store.getBoolean(PREF_INTELLISORT));
+        reload(true);
+      });
+      toggle(menu, "Show Details", PREF_SHOW_DETAILS, LogPanel.this::updateRightSide);
+      toggle(menu, "Show Changed Files", PREF_SHOW_FILES, LogPanel.this::updateRightSide);
+      return menu;
+    }
+
+    private void toggle(Menu parent, String text, String key, Runnable after) {
+      IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+      MenuItem item = new MenuItem(parent, SWT.CHECK);
+      item.setText(text);
+      item.setSelection(store.getBoolean(key));
+      item.addListener(SWT.Selection, e -> {
+        store.setValue(key, item.getSelection());
+        after.run();
+      });
+    }
+
+    @Override
+    public Menu getMenu(Menu parent) {
+      return null;
+    }
+
+    @Override
+    public void dispose() {
+      if (menu != null && !menu.isDisposed()) {
+        menu.dispose();
+      }
+      menu = null;
+    }
+  }
+}

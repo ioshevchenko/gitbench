@@ -30,9 +30,9 @@ import java.util.stream.Collectors;
 
 /** The context menu of the commit table, in the order of the IntelliJ "Git.Log.ContextMenu". */
 final class LogContextMenu {
-  private final GitLogView view;
+  private final LogPanel view;
 
-  LogContextMenu(GitLogView view) {
+  LogContextMenu(LogPanel view) {
     this.view = view;
   }
 

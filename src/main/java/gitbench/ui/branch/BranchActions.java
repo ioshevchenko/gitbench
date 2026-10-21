@@ -14,7 +14,7 @@ import gitbench.ui.Activator;
 import gitbench.ui.GitbenchIcons.Icon;
 import gitbench.ui.OperationRunner;
 import gitbench.ui.RepositoryEvents;
-import gitbench.ui.log.GitLogView;
+import gitbench.ui.log.LogPanel;
 import gitbench.ui.push.PushDialog;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
@@ -40,9 +40,9 @@ import java.util.stream.Collectors;
  * New Branch, Update Selected, Delete, Compare with Current, and checkout on double click or Enter.
  */
 final class BranchActions {
-  private final BranchesView view;
+  private final BranchesPanel view;
 
-  BranchActions(BranchesView view) {
+  BranchActions(BranchesPanel view) {
     this.view = view;
   }
 
@@ -170,10 +170,7 @@ final class BranchActions {
       return;
     }
     try {
-      IViewPart part = view.getSite().getPage().showView(GitLogView.ID);
-      if (part instanceof GitLogView log) {
-        log.showRange(current.get().fullName(), ref.fullName());
-      }
+      view.logs().show().showRange(current.get().fullName(), ref.fullName());
     }
     catch (PartInitException e) {
       MessageDialog.openError(view.getSite().getShell(), "Compare", e.getMessage());
