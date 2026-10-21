@@ -8,4 +8,9 @@
             category="gitbench.category"
             class="gitbench.ui.commit.CommitView"/>
    </extension>
+   <extension point="org.eclipse.ui.preferencePages">
+      <page id="gitbench.preferences"
+            name="Gitbench"
+            class="gitbench.ui.GitPreferencePage"/>
+   </extension>
 </plugin>
