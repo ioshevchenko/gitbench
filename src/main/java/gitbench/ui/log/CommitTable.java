@@ -53,6 +53,9 @@ final class CommitTable {
   /** Theme.isDark() reads the preference service; read it at most once a second, not once per cell. */
   private boolean dark;
   private long darkCheckedAt;
+  private Color pale;
+  private Color paleForeground;
+  private Color paleBackground;
 
   CommitTable(Composite parent, DetailsSource details, Supplier<String> myEmail) {
     this.details = details;
@@ -164,7 +167,7 @@ final class CommitTable {
     boolean focusedSelection = selected && table.isFocusControl();
     boolean dark = isDark();
     Color normal = focusedSelection ? table.getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION_TEXT) : table.getForeground();
-    Color pale = table.getDisplay().getSystemColor(SWT.COLOR_WIDGET_DISABLED_FOREGROUND);
+    Color pale = paleColor();
     int commitIndex = row != null ? row.commitIndex() : model.commitIndexOf(hash);
     Color text = focusedSelection || model.inCurrentBranch(commitIndex) ? normal : pale;
     gc.setForeground(text);
@@ -193,6 +196,18 @@ final class CommitTable {
       darkCheckedAt = now;
     }
     return dark;
+  }
+
+  /** The color of commits outside the current branch, readable in both themes; made again only when the theme changes. */
+  private Color paleColor() {
+    Color foreground = table.getForeground();
+    Color background = table.getBackground();
+    if (pale == null || !foreground.equals(paleForeground) || !background.equals(paleBackground)) {
+      paleForeground = foreground;
+      paleBackground = background;
+      pale = Theme.secondaryText(foreground, background);
+    }
+    return pale;
   }
 
   private void scheduleDetailsRequest(int row) {

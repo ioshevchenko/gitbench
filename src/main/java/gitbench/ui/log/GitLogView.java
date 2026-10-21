@@ -177,7 +177,7 @@ public final class GitLogView extends ViewPart {
       }
     });
     installFilesMenu();
-    detailsPanel = new CommitDetailsPanel(rightSide);
+    detailsPanel = new CommitDetailsPanel(rightSide, files.viewer().getControl());
     rightSide.setWeights(50, 50);
     mainSash.setWeights(70, 30);
     updateRightSide();

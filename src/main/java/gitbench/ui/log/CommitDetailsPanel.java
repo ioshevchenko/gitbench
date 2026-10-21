@@ -5,6 +5,8 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import gitbench.ui.Theme;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -20,9 +22,14 @@ final class CommitDetailsPanel {
 
   private final StyledText text;
 
-  CommitDetailsPanel(Composite parent) {
+  /** {@code backgroundSource} is the file tree above: the panel takes its theme background, as in IntelliJ. */
+  CommitDetailsPanel(Composite parent, Control backgroundSource) {
     text = new StyledText(parent, SWT.READ_ONLY | SWT.WRAP | SWT.V_SCROLL);
     text.setMargins(8, 6, 8, 6);
+    Theme.followBackground(backgroundSource, background -> {
+      text.setBackground(background);
+      text.setForeground(backgroundSource.getForeground());
+    });
   }
 
   StyledText control() {
@@ -61,7 +68,7 @@ final class CommitDetailsPanel {
         .append(String.join(", ", branches));
     }
     text.setText(out.toString());
-    StyleRange gray = new StyleRange(meta, out.length() - meta, text.getDisplay().getSystemColor(SWT.COLOR_WIDGET_DISABLED_FOREGROUND), null);
+    StyleRange gray = new StyleRange(meta, out.length() - meta, Theme.secondaryText(text.getForeground(), text.getBackground()), null);
     styles.add(gray);
     text.setStyleRanges(styles.toArray(StyleRange[]::new));
   }

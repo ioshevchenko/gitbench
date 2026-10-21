@@ -36,8 +36,31 @@ final class TextViewers {
     // The default configuration brings the undo manager that Undo and Redo of the editor use.
     viewer.configure(new SourceViewerConfiguration());
     viewer.setDocument(document != null ? document : new Document());
+    followEditorBackground(viewer, ruler, numbers);
     viewer.setEditable(editable);
     return viewer;
+  }
+
+  /**
+   * Paints the ruler in the background of the text. The line-number column is white by default, because SWT system
+   * colors do not follow the dark theme.
+   */
+  static void followEditorBackground(SourceViewer viewer, CompositeRuler ruler, LineNumberRulerColumn... columns) {
+    gitbench.ui.Theme.followBackground(viewer.getTextWidget(), background -> {
+      for (LineNumberRulerColumn column : columns) {
+        column.setBackground(background);
+      }
+      org.eclipse.swt.widgets.Control rulerControl = ruler.getControl();
+      if (rulerControl != null && !rulerControl.isDisposed()) {
+        rulerControl.setBackground(background);
+        if (rulerControl instanceof Composite composite) {
+          for (org.eclipse.swt.widgets.Control child : composite.getChildren()) {
+            child.setBackground(background);
+          }
+        }
+        rulerControl.redraw();
+      }
+    });
   }
 
   /**
