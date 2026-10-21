@@ -11,6 +11,7 @@ import gitbench.git.RepositoryLocator;
 import gitbench.git.RollbackService;
 import gitbench.git.StatusService;
 import gitbench.model.InclusionModel;
+import gitbench.model.MessageHistory;
 import gitbench.ui.Activator;
 import gitbench.ui.GitbenchIcons;
 import gitbench.ui.GitbenchIcons.Icon;
@@ -53,6 +54,8 @@ import java.util.Optional;
 /** The Commit view. It shows the local changes and the commit message panel, as the IntelliJ Commit window does. */
 public final class CommitView extends ViewPart {
   public static final String ID = "gitbench.views.commit";
+  private static final String PREF_MESSAGE_HISTORY = "messageHistory";
+  private static final int MESSAGE_HISTORY_SIZE = 25;
 
   private final InclusionModel inclusion = new InclusionModel();
   private StatusService statusService;
@@ -117,6 +120,7 @@ public final class CommitView extends ViewPart {
     sash.setWeights(65, 35);
 
     createToolbar(getViewSite().getActionBars().getToolBarManager());
+    new CommitContextMenu(this, commitService).install();
 
     context = new RepositoryContext(getSite().getPage(), new RepositoryLocator(runner));
     context.addListener(repository -> {
@@ -271,12 +275,38 @@ public final class CommitView extends ViewPart {
     }
   }
 
-  /** Stores the message in the message history. Task 8 fills it. */
+  /** Stores the message in the message history of the plugin preferences. */
   private void onCommitted(String message) {
+    MessageHistory history = loadHistory();
+    history.add(message.strip());
+    Activator.getDefault().getPreferenceStore().setValue(PREF_MESSAGE_HISTORY, history.serialize());
   }
 
-  /** Shows the message history popup. Task 8 fills it. */
+  /** Shows the recent messages. A click puts the message into the message field. */
   private void onShowMessageHistory(Point screenLocation) {
+    Menu menu = new Menu(getSite().getShell(), SWT.POP_UP);
+    List<String> recent = loadHistory().recent();
+    if (recent.isEmpty()) {
+      MenuItem empty = new MenuItem(menu, SWT.PUSH);
+      empty.setText("No recent messages");
+      empty.setEnabled(false);
+    }
+    for (String message : recent) {
+      MenuItem item = new MenuItem(menu, SWT.PUSH);
+      String subject = message.lines().findFirst().orElse("");
+      item.setText(subject.length() > 80 ? subject.substring(0, 77) + "..." : subject);
+      item.addListener(SWT.Selection, e -> {
+        panel.setMessage(message);
+        panel.focusMessage();
+      });
+    }
+    menu.setLocation(screenLocation);
+    menu.setVisible(true);
+  }
+
+  private static MessageHistory loadHistory() {
+    return MessageHistory.deserialize(Activator.getDefault().getPreferenceStore().getString(PREF_MESSAGE_HISTORY),
+                                      MESSAGE_HISTORY_SIZE);
   }
 
   /** Opens the Push dialog. Task 9 fills it. */
