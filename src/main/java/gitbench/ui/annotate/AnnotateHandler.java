@@ -48,7 +48,7 @@ public final class AnnotateHandler extends AbstractHandler {
     if (file.isEmpty()) {
       return "Cannot annotate: the file is not on disk";
     }
-    GitRunner runner = Activator.getDefault().gitRunner();
+    GitRunner runner = Activator.probeRunner();
     try {
       Optional<LineStatusBase.Key> key = LineStatusBase.find(new RepositoryLocator(runner), file.get());
       if (key.isEmpty()) {

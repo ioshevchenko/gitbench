@@ -158,7 +158,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     }
     String text = document.get();
     int expected = ++generation;
-    GitRunner runner = Activator.getDefault().gitRunner();
+    GitRunner runner = Activator.probeRunner();
     boolean dark = Theme.isDark();
     EXECUTOR.execute(() -> {
       try {

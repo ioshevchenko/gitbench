@@ -31,6 +31,17 @@ class GitRunnerTest {
   }
 
   @Test
+  void quietRunnerDoesNotReportCommands() throws Exception {
+    List<List<String>> reported = new ArrayList<>();
+    GitRunner runner = new GitRunner(() -> "git", (dir, args, result) -> reported.add(args));
+
+    GitResult result = runner.quiet().run(tmp, List.of("--version"), null);
+
+    assertThat(result.ok()).isTrue();
+    assertThat(reported).isEmpty();
+  }
+
+  @Test
   void nonZeroExitIsResultNotException() throws Exception {
     GitResult result = new GitRunner(() -> "git", GitCommandListener.NONE).run(tmp, List.of("rev-parse", "HEAD"), null);
     assertThat(result.exitCode()).isNotZero();

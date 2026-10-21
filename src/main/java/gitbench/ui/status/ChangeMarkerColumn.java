@@ -45,8 +45,12 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   private ITextViewer viewer;
   private StyledText text;
   private LineStatusTracker tracker;
-  /** Found on the tracker thread; read by the repository listener. */
+  /** The file and the document the tracker follows; the editor input can change under the column. */
+  private Path boundFile;
+  private IDocument boundDocument;
+  /** The repository and the path of the file, looked up once per input on the tracker thread. */
   private volatile LineStatusBase.Key key;
+  private volatile boolean keySearched;
   private int hovered = -1;
   private LineGeometry geometry;
   private IPartListener2 activationListener;
@@ -89,15 +93,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     if (editor == null) {
       return;
     }
-    Optional<Path> file = EditorFiles.file(editor.getEditorInput());
-    Optional<IDocument> document = EditorFiles.document(editor);
-    if (file.isEmpty() || document.isEmpty()) {
-      return;
-    }
-    Charset charset = EditorFiles.charset(editor);
-    GitRunner runner = Activator.getDefault().gitRunner();
-    tracker = new LineStatusTracker(document.get(), () -> loadBase(runner, file.get(), charset), canvas.getDisplay());
-    tracker.addListener(this::redraw);
+    bind();
     COLUMNS.put(editor, this);
     RepositoryEvents.listen(repositoryListener);
     activationListener = new IPartListener2() {
@@ -112,11 +108,54 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     editor.getSite().getPage().addPartListener(activationListener);
   }
 
+  /** Starts a tracker for the current file and document of the editor; a file that is not on disk gets none. */
+  private void bind() {
+    ITextEditor editor = getEditor();
+    Optional<Path> file = EditorFiles.file(editor.getEditorInput());
+    Optional<IDocument> document = EditorFiles.document(editor);
+    boundFile = file.orElse(null);
+    boundDocument = document.orElse(null);
+    key = null;
+    keySearched = false;
+    if (file.isEmpty() || document.isEmpty()) {
+      return;
+    }
+    Charset charset = EditorFiles.charset(editor);
+    GitRunner runner = Activator.probeRunner();
+    tracker = new LineStatusTracker(document.get(), () -> loadBase(runner, file.get(), charset), canvas.getDisplay());
+    tracker.addListener(this::redraw);
+  }
+
+  /**
+   * Eclipse keeps the columns when the editor input changes (a reused editor, Save As, a rename) and only sets the
+   * model again; the markers then follow the new file and document.
+   */
+  private void rebindIfInputChanged() {
+    ITextEditor editor = getEditor();
+    if (editor == null || canvas == null || canvas.isDisposed()) {
+      return;
+    }
+    Path file = EditorFiles.file(editor.getEditorInput()).orElse(null);
+    IDocument document = EditorFiles.document(editor).orElse(null);
+    if (java.util.Objects.equals(file, boundFile) && document == boundDocument) {
+      return;
+    }
+    if (tracker != null) {
+      tracker.dispose();
+      tracker = null;
+    }
+    bind();
+    redraw();
+  }
+
   private Optional<String> loadBase(GitRunner runner, Path file, Charset charset) {
     try {
-      Optional<LineStatusBase.Key> found = LineStatusBase.find(new RepositoryLocator(runner), file);
-      key = found.orElse(null);
-      return found.isEmpty() ? Optional.empty() : LineStatusBase.load(runner, found.get(), charset);
+      if (!keySearched) {
+        key = LineStatusBase.find(new RepositoryLocator(runner), file).orElse(null);
+        keySearched = true;
+      }
+      LineStatusBase.Key found = key;
+      return found == null ? Optional.empty() : LineStatusBase.load(runner, found, charset);
     }
     catch (GitException e) {
       return Optional.empty();
@@ -230,6 +269,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
 
   @Override
   public void setModel(IAnnotationModel model) {
+    rebindIfInputChanged();
   }
 
   @Override

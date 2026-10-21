@@ -35,6 +35,15 @@ public final class Activator extends AbstractUIPlugin {
     return gitRunner;
   }
 
+  /**
+   * Git for the probes of the editor columns: they run on each activation and each pause in typing, so they do not
+   * write to the Gitbench console. Without the running plugin, as in the UI tests, it is git from PATH.
+   */
+  public static GitRunner probeRunner() {
+    Activator activator = getDefault();
+    return activator == null ? new GitRunner(() -> "git", gitbench.git.GitCommandListener.NONE) : activator.gitRunner.quiet();
+  }
+
   private String gitPath() {
     String path = getPreferenceStore().getString(PREF_GIT_PATH);
     return path.isBlank() ? "git" : path;

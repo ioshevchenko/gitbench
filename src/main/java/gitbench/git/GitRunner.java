@@ -27,6 +27,11 @@ public final class GitRunner {
   }
 
   /** Runs git in {@code workDir}. A non-zero exit code is a result, not an exception. */
+  /** The same git without the command listener, for probes such as the editor markers that would flood the console. */
+  public GitRunner quiet() {
+    return new GitRunner(gitPath, GitCommandListener.NONE);
+  }
+
   public GitResult run(Path workDir, List<String> args, byte[] stdin) throws GitException {
     String executable = gitPath.get();
     List<String> command = new ArrayList<>();
