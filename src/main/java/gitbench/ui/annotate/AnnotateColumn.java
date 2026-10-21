@@ -80,6 +80,8 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   /** Kept apart from the canvas: a blame may end after the canvas is disposed. */
   private org.eclipse.swt.widgets.Display display;
   private AnnotatePainter painter;
+  /** The menu of the column, filled for the line under the mouse each time it shows. */
+  private Menu menu;
   private Font painterFont;
   private IDocument document;
   private Path file;
@@ -328,19 +330,27 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   }
 
   /** The menu of the column instead of the menu of the ruler, as IntelliJ shows over its annotations. */
+  /**
+   * The menu of the column instead of the menu of the ruler, as IntelliJ shows over its annotations. The column owns
+   * one menu and fills it for the line under the mouse; the OS shows it as the control menu. A menu made for each
+   * click and disposed on hide lost the click on Windows, where the selection comes after the hide.
+   */
   private void showMenu(Event e) {
-    e.doit = false;
     int line = geometry.lineAt(canvas.toControl(e.x, e.y).y);
     Optional<BlameCommit> commit = commitAt(line);
-    Menu menu = new Menu(canvas);
+    if (menu == null || menu.isDisposed()) {
+      menu = new Menu(canvas);
+    }
+    for (MenuItem old : menu.getItems()) {
+      old.dispose();
+    }
     item(menu, "Show Diff", commit.isPresent(), () -> showDiff(commit.get()));
     item(menu, "Copy Revision Number", commit.isPresent(), () -> copy(commit.get().hash()));
     item(menu, "Select in Git Log", commit.isPresent(), () -> selectInLog(commit.get()));
     new MenuItem(menu, SWT.SEPARATOR);
     item(menu, "Close Annotations", true, () -> setVisible(getEditor(), false));
-    menu.addListener(SWT.Hide, h -> menu.getDisplay().asyncExec(menu::dispose));
-    menu.setLocation(e.x, e.y);
-    menu.setVisible(true);
+    // The composite ruler gives its own menu to each column; this column shows its own.
+    canvas.setMenu(menu);
   }
 
   private static void item(Menu menu, String text, boolean enabled, Runnable action) {
@@ -422,6 +432,9 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
       return;
     }
     disposed = true;
+    if (menu != null && !menu.isDisposed()) {
+      menu.dispose();
+    }
     RepositoryEvents.unlisten(repositoryListener);
     if (document != null) {
       document.removeDocumentListener(documentListener);

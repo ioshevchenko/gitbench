@@ -103,6 +103,37 @@ class AnnotateColumnTest extends SwtTest {
   }
 
   @Test
+  void aMenuItemWorksAfterTheMenuHides() throws Exception {
+    TempRepo repo = repo();
+    EditorStub stub = new EditorStub(shell, repo.root().resolve("a.c"), new Document("a\nb\n"));
+    AnnotateColumn column = open(stub);
+    show();
+    waitFor(() -> column.blame() != null);
+    org.eclipse.swt.widgets.Control canvas = column.getControl();
+    org.eclipse.swt.widgets.Event detect = new org.eclipse.swt.widgets.Event();
+    org.eclipse.swt.graphics.Point point = canvas.toDisplay(2, stub.viewer.getTextWidget().getLinePixel(0) + 2);
+    detect.x = point.x;
+    detect.y = point.y;
+
+    canvas.notifyListeners(org.eclipse.swt.SWT.MenuDetect, detect);
+    org.eclipse.swt.widgets.Menu menu = canvas.getMenu();
+    // On Windows the menu hides before the selection of its item arrives.
+    menu.notifyListeners(org.eclipse.swt.SWT.Hide, new org.eclipse.swt.widgets.Event());
+    pump();
+    org.eclipse.swt.widgets.MenuItem copy = java.util.Arrays.stream(menu.getItems())
+      .filter(i -> "Copy Revision Number".equals(i.getText())).findFirst().orElseThrow();
+    copy.notifyListeners(org.eclipse.swt.SWT.Selection, new org.eclipse.swt.widgets.Event());
+
+    org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(display);
+    try {
+      assertThat(clipboard.getContents(org.eclipse.swt.dnd.TextTransfer.getInstance())).isEqualTo(column.blame().lineHashes().get(0));
+    }
+    finally {
+      clipboard.dispose();
+    }
+  }
+
+  @Test
   void closingWhileTheBlameRunsThrowsNothing() throws Exception {
     catchUncaught();
     TempRepo repo = repo();
