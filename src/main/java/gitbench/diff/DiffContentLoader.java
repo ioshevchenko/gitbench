@@ -54,7 +54,8 @@ public final class DiffContentLoader {
     return hash.length() > SHORT_HASH_LENGTH ? hash.substring(0, SHORT_HASH_LENGTH) : hash;
   }
 
-  private static LoadedContent decode(byte[] bytes, Charset charset, String title) {
+  /** Decodes file bytes as a diff side: binary check, UTF-8 BOM, charset and the first line separator. */
+  public static LoadedContent decode(byte[] bytes, Charset charset, String title) {
     int checked = Math.min(bytes.length, BINARY_CHECK_LENGTH);
     for (int i = 0; i < checked; i++) {
       if (bytes[i] == 0) {
