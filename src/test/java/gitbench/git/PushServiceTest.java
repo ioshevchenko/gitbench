@@ -83,6 +83,33 @@ class PushServiceTest {
   }
 
   @Test
+  void pushesNonCurrentBranch() throws Exception {
+    TempRepo remote = TempRepo.initBare();
+    TempRepo work = workWithRemote(remote);
+    commit(work, "a.c", "first");
+    work.git("branch", "side");
+    GitRepository r = new GitRepository(work.root());
+    PushResult result = push.push(r, new PushTarget("origin", "side", false), "side");
+    assertThat(result.status()).isEqualTo(PushResult.Status.OK);
+    assertThat(work.git("ls-remote", "--heads", "origin", "side").trim()).isNotEmpty();
+    assertThat(work.git("branch", "--show-current").trim()).isEqualTo("main");
+  }
+
+  @Test
+  void targetAndOutgoingOfNonCurrentBranch() throws Exception {
+    TempRepo work = workWithRemote(TempRepo.initBare());
+    commit(work, "a.c", "first");
+    GitRepository r = new GitRepository(work.root());
+    push.push(r, push.defaultTarget(r));
+    work.git("switch", "-q", "-c", "side");
+    commit(work, "s.c", "side work");
+    work.git("switch", "-q", "main");
+    PushTarget target = push.defaultTarget(r, "side");
+    assertThat(target).isEqualTo(new PushTarget("origin", "side", false));
+    assertThat(push.outgoing(r, target, "side")).extracting(OutgoingCommit::subject).containsExactly("side work");
+  }
+
+  @Test
   void noRemoteIsError() throws Exception {
     TempRepo work = TempRepo.init();
     commit(work, "a.c", "first");

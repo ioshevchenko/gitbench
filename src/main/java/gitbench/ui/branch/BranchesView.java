@@ -100,6 +100,7 @@ public final class BranchesView extends ViewPart {
     tree.viewer().addSelectionChangedListener(e -> onSelection());
 
     createToolbar();
+    new BranchActions(this).install();
 
     context = new RepositoryContext(getSite().getPage(), new RepositoryLocator(runner));
     context.addListener(this::reload);

@@ -15,7 +15,11 @@ public final class PushService {
 
   /** The upstream of the current branch, or the only remote (or {@code origin}) with the same branch name. */
   public PushTarget defaultTarget(GitRepository repo) throws GitException {
-    String branch = runner.runOk(repo.root(), List.of("symbolic-ref", "--short", "HEAD"), null).trim();
+    return defaultTarget(repo, runner.runOk(repo.root(), List.of("symbolic-ref", "--short", "HEAD"), null).trim());
+  }
+
+  /** Like {@link #defaultTarget(GitRepository)}, for any local branch. */
+  public PushTarget defaultTarget(GitRepository repo, String branch) throws GitException {
     GitResult remote = runner.run(repo.root(), List.of("config", "--get", "branch." + branch + ".remote"), null);
     GitResult merge = runner.run(repo.root(), List.of("config", "--get", "branch." + branch + ".merge"), null);
     if (remote.ok() && merge.ok()) {
@@ -30,12 +34,17 @@ public final class PushService {
 
   /** Returns the commits that the push sends, newest first. */
   public List<OutgoingCommit> outgoing(GitRepository repo, PushTarget target) throws GitException {
+    return outgoing(repo, target, "HEAD");
+  }
+
+  /** Returns the commits that a push of {@code source} sends, newest first. */
+  public List<OutgoingCommit> outgoing(GitRepository repo, PushTarget target, String source) throws GitException {
     List<String> args = new ArrayList<>(List.of("log", "--format=%h%x00%s%x00%an%x00%at"));
     if (target.hasUpstream()) {
-      args.add("@{u}..HEAD");
+      args.add(source + "@{u}.." + source);
     }
     else {
-      args.add("HEAD");
+      args.add(source);
       args.add("--not");
       args.add("--remotes=" + target.remote());
     }
@@ -77,6 +86,11 @@ public final class PushService {
 
   /** Pushes HEAD to the target branch. Sets the upstream on the first push of a branch. */
   public PushResult push(GitRepository repo, PushTarget target) throws GitException {
+    return push(repo, target, "HEAD");
+  }
+
+  /** Pushes {@code sourceBranch} (or {@code HEAD}) to the target branch; sets the upstream on its first push. */
+  public PushResult push(GitRepository repo, PushTarget target, String sourceBranch) throws GitException {
     List<String> remotes = runner.runOk(repo.root(), List.of("remote"), null).lines().map(String::trim).toList();
     if (!remotes.contains(target.remote())) {
       return new PushResult(PushResult.Status.ERROR, "No remote '" + target.remote() + "' is configured.");
@@ -86,7 +100,7 @@ public final class PushService {
       args.add("-u");
     }
     args.add(target.remote());
-    args.add("HEAD:refs/heads/" + target.branch());
+    args.add(sourceBranch + ":refs/heads/" + target.branch());
     GitResult result = runner.run(repo.root(), args, null);
     for (String line : result.stdoutText().split("\n")) {
       String[] f = line.split("\t");

@@ -68,7 +68,7 @@ public final class CommitOperations {
     return reset.ok() ? OperationResult.success(message) : reset;
   }
 
-  static OperationResult run(GitRunner runner, GitRepository repo, String what, List<String> args) throws GitException {
+  public static OperationResult run(GitRunner runner, GitRepository repo, String what, List<String> args) throws GitException {
     GitResult result = runner.run(repo.root(), args, null);
     String output = (result.stdoutText() + "\n" + result.stderr()).trim();
     if (result.ok()) {
