@@ -49,6 +49,10 @@ public final class GitView extends ViewPart {
     log.contributeToolbar(getViewSite().getActionBars().getToolBarManager());
   }
 
+  public LogPanel log() {
+    return log;
+  }
+
   @Override
   public void setFocus() {
     log.setFocus();

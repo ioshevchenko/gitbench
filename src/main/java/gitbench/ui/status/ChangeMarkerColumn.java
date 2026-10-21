@@ -12,7 +12,6 @@ import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextListener;
 import org.eclipse.jface.text.ITextViewer;
 import org.eclipse.jface.text.IViewportListener;
-import org.eclipse.jface.text.JFaceTextUtil;
 import org.eclipse.jface.text.source.CompositeRuler;
 import org.eclipse.jface.text.source.IAnnotationModel;
 import org.eclipse.swt.SWT;
@@ -22,17 +21,12 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Event;
-import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IPartListener2;
-import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.IWorkbenchPartReference;
-import org.eclipse.ui.editors.text.IEncodingSupport;
 import org.eclipse.ui.texteditor.ITextEditor;
 import org.eclipse.ui.texteditor.rulers.AbstractContributedRulerColumn;
 
-import java.net.URI;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
@@ -54,6 +48,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   /** Found on the tracker thread; read by the repository listener. */
   private volatile LineStatusBase.Key key;
   private int hovered = -1;
+  private LineGeometry geometry;
   private IPartListener2 activationListener;
   private final Consumer<GitRepository> repositoryListener = repository -> {
     LineStatusBase.Key current = key;
@@ -76,6 +71,7 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   public Control createControl(CompositeRuler parentRuler, Composite parentControl) {
     viewer = parentRuler.getTextViewer();
     text = viewer.getTextWidget();
+    geometry = new ViewerGeometry(viewer);
     canvas = new Canvas(parentControl, SWT.NO_FOCUS | SWT.DOUBLE_BUFFERED);
     canvas.addListener(SWT.Paint, this::paint);
     canvas.addListener(SWT.MouseMove, e -> setHovered(ChangeMarkerPainter.rangeAt(ranges(), geometry, e.y)));
@@ -93,14 +89,14 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     if (editor == null) {
       return;
     }
-    Optional<Path> file = fileOf(editor.getEditorInput());
-    IDocument document = editor.getDocumentProvider() == null ? null : editor.getDocumentProvider().getDocument(editor.getEditorInput());
-    if (file.isEmpty() || document == null) {
+    Optional<Path> file = EditorFiles.file(editor.getEditorInput());
+    Optional<IDocument> document = EditorFiles.document(editor);
+    if (file.isEmpty() || document.isEmpty()) {
       return;
     }
-    Charset charset = charsetOf(editor);
+    Charset charset = EditorFiles.charset(editor);
     GitRunner runner = Activator.getDefault().gitRunner();
-    tracker = new LineStatusTracker(document, () -> loadBase(runner, file.get(), charset), canvas.getDisplay());
+    tracker = new LineStatusTracker(document.get(), () -> loadBase(runner, file.get(), charset), canvas.getDisplay());
     tracker.addListener(this::redraw);
     COLUMNS.put(editor, this);
     RepositoryEvents.listen(repositoryListener);
@@ -127,27 +123,6 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
     }
   }
 
-  private static Optional<Path> fileOf(IEditorInput input) {
-    if (input instanceof IURIEditorInput uriInput) {
-      URI uri = uriInput.getURI();
-      if (uri != null && "file".equals(uri.getScheme())) {
-        return Optional.of(Path.of(uri));
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Charset charsetOf(ITextEditor editor) {
-    IEncodingSupport encoding = editor.getAdapter(IEncodingSupport.class);
-    String name = encoding == null ? null : encoding.getEncoding() != null ? encoding.getEncoding() : encoding.getDefaultEncoding();
-    try {
-      return name == null ? StandardCharsets.UTF_8 : Charset.forName(name);
-    }
-    catch (RuntimeException e) {
-      return StandardCharsets.UTF_8;
-    }
-  }
-
   /** The tracker of the editor; empty for a file that is not on disk. */
   Optional<LineStatusTracker> tracker() {
     return Optional.ofNullable(tracker);
@@ -160,31 +135,6 @@ public final class ChangeMarkerColumn extends AbstractContributedRulerColumn {
   java.util.List<gitbench.diff.DiffChange> ranges() {
     return tracker == null ? java.util.List.of() : tracker.ranges();
   }
-
-  final LineGeometry geometry = new LineGeometry() {
-    @Override
-    public int lineHeight() {
-      return text.getLineHeight();
-    }
-
-    @Override
-    public int top(int modelLine) {
-      int lines = viewer.getDocument().getNumberOfLines();
-      for (int line = modelLine; line < lines; line++) {
-        int widgetLine = JFaceTextUtil.modelLineToWidgetLine(viewer, line);
-        if (widgetLine >= 0) {
-          return text.getLinePixel(widgetLine);
-        }
-      }
-      // Below the last line, or below a folded region at the end: the bottom of the text.
-      return text.getLinePixel(text.getLineCount() - 1) + text.getLineHeight();
-    }
-
-    @Override
-    public boolean visible(int modelLine) {
-      return modelLine >= viewer.getDocument().getNumberOfLines() || JFaceTextUtil.modelLineToWidgetLine(viewer, modelLine) >= 0;
-    }
-  };
 
   private void paint(Event e) {
     e.gc.setBackground(canvas.getParent().getBackground());

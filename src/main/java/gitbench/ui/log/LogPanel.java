@@ -96,6 +96,8 @@ public final class LogPanel {
   private GitRepository loadedRepository;
   private List<GitRef> refs = List.of();
   private LogModel fullModel;
+  /** A commit to select when a load brings it, as after Select in Git Log from a closed or loading log. */
+  private String pendingSelection;
   private String myEmail;
   private Range range;
   private final Map<String, CommitDetails> details = new ConcurrentHashMap<>();
@@ -247,9 +249,14 @@ public final class LogPanel {
     applyFilter();
   }
 
-  /** Selects the commit, and clears the filters when they hide it. */
+  /** Selects the commit, and clears the filters when they hide it. A commit the log has not loaded yet waits for the load. */
   public void selectCommit(String hash) {
-    if (!table.select(hash) && fullModel != null && fullModel.rowOf(hash) >= 0) {
+    if (fullModel == null || fullModel.rowOf(hash) < 0) {
+      pendingSelection = hash;
+      return;
+    }
+    pendingSelection = null;
+    if (!table.select(hash)) {
       filterBar.setFilter(LogFilter.none());
       range = null;
       filterBar.setRange(null);
@@ -329,6 +336,9 @@ public final class LogPanel {
           branchesOfCommit.clear();
           setContentDescription("");
           applyFilter();
+          if (pendingSelection != null) {
+            selectCommit(pendingSelection);
+          }
         });
       }
       catch (GitException e) {
