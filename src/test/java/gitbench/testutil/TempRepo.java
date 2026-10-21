@@ -104,6 +104,16 @@ public final class TempRepo {
     return runGit(root, args);
   }
 
+  /** Runs git and returns its output even when it fails, for example a merge that stops on a conflict. */
+  public String gitMayFail(String... args) {
+    try {
+      return runGit(root, args);
+    }
+    catch (IllegalStateException e) {
+      return e.getMessage();
+    }
+  }
+
   /** Runs git with {@code input} on stdin, for example {@code fast-import}. */
   public String gitWithInput(byte[] input, String... args) {
     return runGit(root, input, java.util.Map.of(), args);

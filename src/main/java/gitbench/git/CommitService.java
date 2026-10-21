@@ -111,7 +111,7 @@ public final class CommitService {
     runPathspec(runner, repo, args, paths);
   }
 
-  static void runPathspec(GitRunner runner, GitRepository repo, List<String> args, List<String> paths) throws GitException {
+  public static void runPathspec(GitRunner runner, GitRepository repo, List<String> args, List<String> paths) throws GitException {
     List<String> all = new ArrayList<>(args);
     all.add("--pathspec-from-file=-");
     all.add("--pathspec-file-nul");
