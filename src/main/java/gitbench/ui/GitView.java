@@ -53,6 +53,12 @@ public final class GitView extends ViewPart {
     return log;
   }
 
+  /** Shows the repository in both panels and selects the commit in the log. */
+  public void showCommit(gitbench.git.GitRepository repository, String hash) {
+    branches.showRepository(repository);
+    log.showCommit(repository, hash);
+  }
+
   @Override
   public void setFocus() {
     log.setFocus();

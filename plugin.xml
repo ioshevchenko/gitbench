@@ -58,14 +58,8 @@
       </column>
    </extension>
    <extension point="org.eclipse.ui.menus">
-      <menuContribution locationURI="popup:#TextRulerContext?after=additions">
-         <command commandId="gitbench.annotate" label="Annotate with Git Blame" style="push"/>
-      </menuContribution>
-      <menuContribution locationURI="popup:#CEditorRulerContext?after=additions">
-         <command commandId="gitbench.annotate" label="Annotate with Git Blame" style="push"/>
-      </menuContribution>
-      <menuContribution locationURI="popup:#ASMEditorRulerContext?after=additions">
-         <command commandId="gitbench.annotate" label="Annotate with Git Blame" style="push"/>
+      <menuContribution locationURI="popup:#AbstractTextEditorRulerContext?after=additions">
+         <command commandId="gitbench.annotate" label="Annotate with Git Blame" style="toggle"/>
       </menuContribution>
    </extension>
    <extension point="org.eclipse.ui.contexts">

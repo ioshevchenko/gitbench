@@ -150,6 +150,11 @@ public final class BranchesPanel {
     description.accept(text);
   }
 
+  /** Shows the branches of the repository, as the Git view does when an editor shows a commit of it. */
+  public void showRepository(GitRepository repository) {
+    context.select(repository);
+  }
+
   public void setFocus() {
     tree.viewer().getControl().setFocus();
   }

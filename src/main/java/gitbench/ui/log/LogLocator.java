@@ -1,5 +1,6 @@
 package gitbench.ui.log;
 
+import gitbench.git.GitRepository;
 import gitbench.ui.GitView;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.ui.IViewPart;
@@ -11,20 +12,15 @@ public final class LogLocator {
   private LogLocator() {
   }
 
-  public static void showCommit(IWorkbenchPage page, String hash) {
+  public static void showCommit(IWorkbenchPage page, GitRepository repository, String hash) {
     try {
-      LogPanel log;
-      if (page.findView(GitView.ID) != null) {
-        log = ((GitView)page.showView(GitView.ID)).log();
-      }
-      else if (page.findView(GitLogView.ID) != null) {
-        log = ((GitLogView)page.showView(GitLogView.ID)).panel();
+      if (page.findView(GitView.ID) == null && page.findView(GitLogView.ID) != null) {
+        ((GitLogView)page.showView(GitLogView.ID)).panel().showCommit(repository, hash);
       }
       else {
         IViewPart view = page.showView(GitView.ID);
-        log = ((GitView)view).log();
+        ((GitView)view).showCommit(repository, hash);
       }
-      log.selectCommit(hash);
     }
     catch (PartInitException e) {
       MessageDialog.openError(page.getWorkbenchWindow().getShell(), "Select in Git Log", e.getMessage());

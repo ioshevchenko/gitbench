@@ -321,7 +321,10 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   }
 
   private void selectInLog(BlameCommit commit) {
-    LogLocator.showCommit(getEditor().getSite().getPage(), commit.hash());
+    LineStatusBase.Key found = key;
+    if (found != null) {
+      LogLocator.showCommit(getEditor().getSite().getPage(), found.repository(), commit.hash());
+    }
   }
 
   /** The menu of the column instead of the menu of the ruler, as IntelliJ shows over its annotations. */

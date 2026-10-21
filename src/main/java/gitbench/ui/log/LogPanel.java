@@ -265,6 +265,16 @@ public final class LogPanel {
     }
   }
 
+  /**
+   * Shows the repository and selects the commit in it, as Select in Git Log from an editor does. The log follows the
+   * selection of the workbench, which knows only workspace files; a file opened from outside the workspace needs this.
+   */
+  public void showCommit(GitRepository repository, String hash) {
+    pendingSelection = hash;
+    context.select(repository);
+    selectCommit(hash);
+  }
+
   /** Compare with Current: shows the commits of {@code includeRef} that are not in {@code excludeRef}. */
   public void showRange(String excludeRef, String includeRef) {
     range = new Range(excludeRef, includeRef);

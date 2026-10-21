@@ -21,7 +21,16 @@ import java.util.Optional;
  * Annotate with Git Blame: shows the annotate column in the active editor, or closes it when it shows. A file that git
  * does not track gets a message in the status line instead.
  */
-public final class AnnotateHandler extends AbstractHandler {
+public final class AnnotateHandler extends AbstractHandler implements org.eclipse.ui.commands.IElementUpdater {
+  /** The menu builds its items each time it shows; the check mark tells whether the active editor shows annotations. */
+  @Override
+  public void updateElement(org.eclipse.ui.menus.UIElement element, @SuppressWarnings("rawtypes") java.util.Map parameters) {
+    org.eclipse.ui.IWorkbenchWindow window = org.eclipse.ui.PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+    IEditorPart part = window == null || window.getActivePage() == null ? null : window.getActivePage().getActiveEditor();
+    ITextEditor editor = part == null ? null : part.getAdapter(ITextEditor.class);
+    element.setChecked(editor != null && AnnotateColumn.isVisible(editor));
+  }
+
   @Override
   public Object execute(ExecutionEvent event) {
     IEditorPart part = HandlerUtil.getActiveEditor(event);
