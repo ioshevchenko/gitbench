@@ -134,6 +134,30 @@ class AnnotateColumnTest extends SwtTest {
   }
 
   @Test
+  void aRightClickOnTheColumnShowsOnlyTheColumnMenu() throws Exception {
+    TempRepo repo = repo();
+    EditorStub stub = new EditorStub(shell, repo.root().resolve("a.c"), new Document("a\nb\n"));
+    org.eclipse.swt.widgets.Menu rulerMenu = new org.eclipse.swt.widgets.Menu(stub.ruler.getControl());
+    stub.ruler.getControl().setMenu(rulerMenu);
+    AnnotateColumn column = new AnnotateColumn();
+    column.setEditor(stub.editor);
+    // As in the editor: the ruler gives the column its listeners, and one of them opens the ruler menu.
+    stub.ruler.addDecorator(0, column);
+    org.eclipse.swt.widgets.Control canvas = column.getControl();
+    org.eclipse.swt.widgets.Event detect = new org.eclipse.swt.widgets.Event();
+    org.eclipse.swt.graphics.Point point = canvas.toDisplay(2, 2);
+    detect.x = point.x;
+    detect.y = point.y;
+
+    canvas.notifyListeners(org.eclipse.swt.SWT.MenuDetect, detect);
+
+    boolean rulerMenuShown = rulerMenu.isVisible();
+    rulerMenu.setVisible(false);
+    assertThat(rulerMenuShown).as("the ruler menu shown").isFalse();
+    assertThat(canvas.getMenu()).isNotNull().isNotSameAs(rulerMenu);
+  }
+
+  @Test
   void closingWhileTheBlameRunsThrowsNothing() throws Exception {
     catchUncaught();
     TempRepo repo = repo();

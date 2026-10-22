@@ -35,6 +35,7 @@ import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.ui.texteditor.ITextEditor;
@@ -99,6 +100,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
   private volatile int generation;
   private boolean disposed;
   private final Runnable blameLater = this::reblame;
+  private final Listener menuListener = this::showMenu;
   private final IDocumentListener documentListener = new IDocumentListener() {
     @Override
     public void documentAboutToBeChanged(DocumentEvent event) {
@@ -157,7 +159,7 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     canvas.addListener(SWT.Paint, this::paint);
     canvas.addListener(SWT.MouseMove, e -> canvas.setToolTipText(tooltip(geometry.lineAt(e.y))));
     canvas.addListener(SWT.MouseDown, this::mouseDown);
-    canvas.addListener(SWT.MenuDetect, this::showMenu);
+    canvas.addListener(SWT.MenuDetect, menuListener);
     canvas.addListener(SWT.Dispose, e -> dispose());
     viewer.addViewportListener(viewportListener);
     viewer.addTextListener(textListener);
@@ -329,13 +331,19 @@ public final class AnnotateColumn extends AbstractContributedRulerColumn {
     }
   }
 
-  /** The menu of the column instead of the menu of the ruler, as IntelliJ shows over its annotations. */
   /**
    * The menu of the column instead of the menu of the ruler, as IntelliJ shows over its annotations. The column owns
    * one menu and fills it for the line under the mouse; the OS shows it as the control menu. A menu made for each
    * click and disposed on hide lost the click on Windows, where the selection comes after the hide.
    */
   private void showMenu(Event e) {
+    // The composite ruler adds to each column a MenuDetect listener that opens the ruler menu. That menu opened first,
+    // and the column menu came after it closed. Only this listener stays; it runs first, so the ruler one never runs.
+    for (Listener other : canvas.getListeners(SWT.MenuDetect)) {
+      if (other != menuListener) {
+        canvas.removeListener(SWT.MenuDetect, other);
+      }
+    }
     int line = geometry.lineAt(canvas.toControl(e.x, e.y).y);
     Optional<BlameCommit> commit = commitAt(line);
     if (menu == null || menu.isDisposed()) {
