@@ -113,6 +113,7 @@ public final class CommitView extends ViewPart {
 
     SashForm sash = new SashForm(root, SWT.VERTICAL);
     sash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+    gitbench.ui.Separators.onePixel(sash);
     tree = new ChangesTreeViewer(sash, inclusion, this::updateButtons);
     tree.viewer().addSelectionChangedListener(e -> updateActions());
     tree.viewer().addDoubleClickListener(e -> {
